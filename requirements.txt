@@ -1,0 +1,14 @@
+# Spark
+pyspark==3.5.1
+
+# Data validation, parsing, etc.
+pandas>=1.5
+pyarrow>=13.0.0
+
+# Testing & linting
+pytest>=7.0
+flake8>=6.0
+
+# AWS SDK 
+boto3>=1.28
+
