@@ -53,9 +53,8 @@ jobs:
             --function-name s3-validator \
             --runtime python3.10 \
             --role arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/lab6-lambda \
-            
             --handler s3_validation.lambda_handler \
-            --zip-file fileb://lambda.zip \
+            --code ZipFile=fileb://lambda.zip
             --timeout 30 \
             --memory-size 128
 
