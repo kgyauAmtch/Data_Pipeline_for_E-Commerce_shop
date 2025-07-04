@@ -6,6 +6,7 @@ on:
       - 'lambda/**'
       - 'scripts/**'
       - 'docker/**'
+      - 'ecs/**'
       - 'requirements.txt'
       - '.github/workflows/deploy.yml'
     branches:
@@ -13,11 +14,11 @@ on:
 
 env:
   ECR_REPOSITORY: lab6/ecommerce-repo
+  TASK_DEFINITION_NAME: ecommerce-task
 
 jobs:
   deploy-lambda:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -73,8 +74,7 @@ jobs:
 
   build-and-push-ecr:
     runs-on: ubuntu-latest
-    needs: deploy-lambda  
-
+    needs: deploy-lambda
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -92,6 +92,30 @@ jobs:
 
       - name: Build and push Docker image to ECR
         run: |
-          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:ecommerce_image"
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
           docker build -t $IMAGE_URI -f docker/Dockerfile .
           docker push $IMAGE_URI
+
+  register-ecs-task:
+    runs-on: ubuntu-latest
+    needs: build-and-push-ecr
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Replace image URI in task definition template
+        run: |
+          IMAGE_URI="${{ steps.build-and-push-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:ecommerce_image"
+          sed "s|\${IMAGE_URI}|$IMAGE_URI|g" ecs/ecs_taskdefinition.json > rendered-task-def.json
+
+      - name: Register ECS task definition
+        run: |
+          aws ecs register-task-definition --cli-input-json file://rendered-task-def.json
