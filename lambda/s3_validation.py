@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import os
 import logging
 
-# Setup logging at module level
+# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -64,11 +64,9 @@ def lambda_handler(event, context):
             if file_type == 'products':
                 validated_key = 'validated/products/products.csv'
                 s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
-                # Skip deleting folder placeholders
                 if not key.endswith('/'):
                     s3.delete_object(Bucket=bucket, Key=key)
 
-                # Update special DynamoDB item for latest products path
                 table.update_item(
                     Key={"group_key": "latest_products"},
                     UpdateExpression="SET products_path = :path",
@@ -84,17 +82,10 @@ def lambda_handler(event, context):
 
             order_date = extract_order_date(file_type, headers, data_row)
 
-            filename = key.split('/')[-1]
-            validated_key = f"validated/{file_type}/dt={order_date}/{filename}"
+            logger.info(f"Header validation passed for file: s3://{bucket}/{key}. Leaving in raw/")
 
-            s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
-            # Skip deleting folder placeholders
-            if not key.endswith('/'):
-                s3.delete_object(Bucket=bucket, Key=key)
-
-            logger.info(f"Moved file to {validated_key}")
-
-            update_registry(group_key, file_type, validated_key, order_date)
+            # Just update registry — ECS will handle full validation + move to validated/
+            update_registry(group_key, file_type, key, order_date)
 
         except Exception as e:
             logger.error(f"Error processing file {key}: {str(e)}")
@@ -116,17 +107,14 @@ def detect_file_type(key):
 
 def extract_group_key(key):
     filename = key.split('/')[-1]
-    # Assumes group key is last underscore-separated token before '.csv', e.g. order_part1.csv -> part1
     parts = filename.split('_')
     last_part = parts[-1].replace('.csv', '')
     return last_part
 
 
 def extract_order_date(file_type, headers, data_row):
-    # For orders and order_items, use 'created_at' field for partitioning
     created_at_idx = headers.index('created_at')
     created_at = data_row[created_at_idx]
-    # Parse date, fallback to today if malformed
     try:
         return datetime.strptime(created_at[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
     except Exception:
@@ -137,7 +125,6 @@ def extract_order_date(file_type, headers, data_row):
 def handle_invalid_file(bucket, key, file_type, reason):
     rejected_key = key.replace('raw/', f'rejected/{file_type}/')
     s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=rejected_key)
-    # Skip deleting folder placeholders
     if not key.endswith('/'):
         s3.delete_object(Bucket=bucket, Key=key)
 
@@ -173,7 +160,6 @@ def update_registry(group_key, file_type, s3_path, order_date):
 
     item = response.get('Attributes', {})
 
-    # Only orders and order_items trigger Step Function or debounce
     if file_type in ['orders', 'order_items']:
         if item.get("has_orders") and item.get("has_order_items"):
             logger.info(f"Both orders and order_items present for group {group_key}, triggering Step Function")
@@ -184,11 +170,10 @@ def update_registry(group_key, file_type, s3_path, order_date):
                     "order_date": order_date,
                     "orders_path": item.get("orders_path"),
                     "order_items_path": item.get("order_items_path"),
-                    "products_path": item.get("products_path")  # optional, may be None
+                    "products_path": item.get("products_path")  # optional
                 })
             )
         else:
-            # Set debounce TTL (2 minutes from now)
             ttl = int((datetime.utcnow() + timedelta(seconds=DEBOUNCE_SECONDS)).timestamp())
             table.update_item(
                 Key={"group_key": group_key},
