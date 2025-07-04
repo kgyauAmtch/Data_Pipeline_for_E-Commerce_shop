@@ -92,6 +92,6 @@ jobs:
 
       - name: Build and push Docker image to ECR
         run: |
-          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:ecommerce_image"
           docker build -t $IMAGE_URI -f docker/Dockerfile .
           docker push $IMAGE_URI
