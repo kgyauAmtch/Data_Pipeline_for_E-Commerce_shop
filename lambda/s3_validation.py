@@ -28,12 +28,13 @@ REQUIRED_HEADERS = {
     'products': ['id', 'sku', 'cost', 'category', 'name', 'brand', 'retail_price', 'department']
 }
 
-
 def lambda_handler(event, context):
     records = event.get('Records')
     if not records:
         logger.warning("No 'Records' found in event; skipping processing.")
-        return {"status": "no records to process"}
+        return {"validation_status": "FAILED", "reason": "No records to process"}
+
+    overall_success = True  # Track global validation result
 
     for record in records:
         bucket = record['s3']['bucket']['name']
@@ -58,9 +59,10 @@ def lambda_handler(event, context):
             # Validate headers
             if not set(REQUIRED_HEADERS[file_type]).issubset(set(headers)):
                 handle_invalid_file(bucket, key, file_type, reason="Missing required columns")
+                overall_success = False
                 continue
 
-            # Special handling for products file (static)
+            # Products file: always copied to same location
             if file_type == 'products':
                 validated_key = 'validated/products/products.csv'
                 s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
@@ -75,7 +77,7 @@ def lambda_handler(event, context):
                 logger.info(f"Updated latest products path to {validated_key}")
                 continue
 
-            # For orders and order_items, extract order_date from first data row
+            # Extract order date
             data_row = next(reader, None)
             if data_row is None:
                 raise Exception("File has no data rows")
@@ -84,15 +86,19 @@ def lambda_handler(event, context):
 
             logger.info(f"Header validation passed for file: s3://{bucket}/{key}. Leaving in raw/")
 
-            # Just update registry — ECS will handle full validation + move to validated/
+            # Update registry (ECS will pick it up)
             update_registry(group_key, file_type, key, order_date)
 
         except Exception as e:
             logger.error(f"Error processing file {key}: {str(e)}")
             handle_invalid_file(bucket, key, file_type="unknown", reason=str(e))
+            overall_success = False
 
-    return {"status": "done"}
-
+    # Final status for Step Function Choice state
+    if overall_success:
+        return {"validation_status": "SUCCESS"}
+    else:
+        return {"validation_status": "FAILED"}
 
 def detect_file_type(key):
     if "order_items" in key:
@@ -104,13 +110,11 @@ def detect_file_type(key):
     else:
         return "unknown"
 
-
 def extract_group_key(key):
     filename = key.split('/')[-1]
     parts = filename.split('_')
     last_part = parts[-1].replace('.csv', '')
     return last_part
-
 
 def extract_order_date(file_type, headers, data_row):
     created_at_idx = headers.index('created_at')
@@ -120,7 +124,6 @@ def extract_order_date(file_type, headers, data_row):
     except Exception:
         logger.warning(f"Malformed created_at date: {created_at}, defaulting to today")
         return datetime.utcnow().strftime('%Y-%m-%d')
-
 
 def handle_invalid_file(bucket, key, file_type, reason):
     rejected_key = key.replace('raw/', f'rejected/{file_type}/')
@@ -136,7 +139,6 @@ def handle_invalid_file(bucket, key, file_type, reason):
         ContentType='application/json'
     )
     logger.info(f"Moved invalid file to {rejected_key} with reason: {reason}")
-
 
 def update_registry(group_key, file_type, s3_path, order_date):
     update_expr = "SET #file_path = :path, #has_flag = :trueval, order_date = :dt"
@@ -170,7 +172,7 @@ def update_registry(group_key, file_type, s3_path, order_date):
                     "order_date": order_date,
                     "orders_path": item.get("orders_path"),
                     "order_items_path": item.get("order_items_path"),
-                    "products_path": item.get("products_path")  # optional
+                    "products_path": item.get("products_path")
                 })
             )
         else:
