@@ -24,7 +24,7 @@ jobs:
         working-directory: lambda
         run: |
           mkdir -p package
-          cp lambda_s3_validation.py package/
+          cp s3_validation.py package/
           cd package
           zip -r ../lambda.zip .
 
