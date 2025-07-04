@@ -16,7 +16,7 @@ dynamodb = boto3.resource('dynamodb')
 stepfunctions = boto3.client('stepfunctions')
 
 # Environment Variables
-DDB_TABLE = os.environ['file_ingestion_registry']
+DDB_TABLE = os.environ['INGESTION_TABLE']
 STEP_FUNCTION_ARN = os.environ['STEP_FUNCTION_ARN']
 DEBOUNCE_SECONDS = int(os.environ.get('DEBOUNCE_SECONDS', 120))  # default 2 minutes
 
