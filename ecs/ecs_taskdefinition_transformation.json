@@ -1,0 +1,24 @@
+{
+  "family": "ecommerce-transformation-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole-lab6",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "transformation-container",
+      "image": "${IMAGE_URI_TRANSFORMATION}",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-group": "/ecs/ecommerce-lab6",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
