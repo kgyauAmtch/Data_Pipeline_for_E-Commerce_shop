@@ -4,8 +4,8 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskExecutionRole-lab6",
-  "taskRoleArn": "arn:aws:iam::${AWS_ACCOUNT_ID}:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::269610886972:role/ecsTaskExecutionRole-lab6",
+  "taskRoleArn": "arn:aws:iam::269610886972:role/ecsTaskRole",
   "containerDefinitions": [
     {
       "name": "ecommerce-container",
@@ -15,7 +15,7 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-region": "${AWS_REGION}",
-          "awslogs-group": "/ecs/kpi-transform",
+          "awslogs-group": "/ecs/ecommerce-lab6",
           "awslogs-stream-prefix": "ecs"
         }
       }
