@@ -1,0 +1,24 @@
+{
+  "family": "ecommerce-validation-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole-lab6",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "validation-container",
+      "image": "${IMAGE_URI_VALIDATION}",
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-group": "/ecs/ecommerce-lab6",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
