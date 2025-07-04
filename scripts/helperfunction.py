@@ -1,4 +1,5 @@
 import boto3
+import os
 import logging
 from botocore.exceptions import ClientError
 
@@ -116,7 +117,7 @@ def upsert_category_kpi_batch(partition_iterator, processing_date):
                 batch.put_item(Item=clean_item)
                 
             except Exception as e:
-                logger.error(f"✗ Error processing category KPI for {row.get('category', 'unknown')}: {e}")
+                logger.error(f"Error processing category KPI for {row.get('category', 'unknown')}: {e}")
 
 def upsert_order_kpi_batch(partition_iterator, processing_date, data_source):
     """
@@ -189,4 +190,4 @@ def upsert_order_kpi_batch(partition_iterator, processing_date, data_source):
                 batch.put_item(Item=clean_item)
                 
             except Exception as e:
-                logger.error(f"✗ Error processing order KPI for {processing_date}: {e}")
+                logger.error(f"Error processing order KPI for {processing_date}: {e}")
