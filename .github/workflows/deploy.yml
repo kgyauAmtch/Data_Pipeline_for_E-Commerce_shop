@@ -1,48 +1,42 @@
-name: ECS CI/CD Pipeline
+name: Deploy Lambda
 
 on:
   push:
-    branches:
-      - main
-
-env:
-  ECR_REPOSITORY: kpi-pipeline
-  IMAGE_TAG: latest
+    paths:
+      - 'lambda/**'
+      - '.github/workflows/deploy-lambda.yml'
+    branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  deploy-lambda:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-        pip install pytest
+      - name: Install dependencies and package lambda
+        working-directory: lambda
+        run: |
+          mkdir -p package
+          cp lambda_s3_validation.py package/
+          cd package
+          zip -r ../lambda.zip .
 
-    # - name: Run Tests
-    #   run: pytest tests/
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-
-    # - name: Log in to Amazon ECR
-    #   id: login-ecr
-    #   uses: aws-actions/amazon-ecr-login@v1
-
-    # - name: Build and Push Docker Image
-    #   run: |
-    #     IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
-    #     docker build -t $IMAGE_URI ./docker
-    #     docker push $IMAGE_URI
+      - name: Deploy Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name lambda-s3-validator \
+            --zip-file fileb://lambda/lambda.zip
