@@ -5,7 +5,8 @@ on:
     paths:
       - 'lambda/**'
       - '.github/workflows/deploy.yml'
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   deploy-lambda:
@@ -20,12 +21,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies and package lambda
+      - name: Install AWS CLI
+        run: |
+          python -m pip install --upgrade pip
+          pip install awscli
+
+      - name: Package Lambda
         working-directory: lambda
         run: |
-          mkdir -p package
-          cp s3_validation.py package/
-          cd package
           zip -r ../lambda.zip .
 
       - name: Configure AWS credentials
@@ -35,8 +38,30 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy Lambda
+      - name: Check if Lambda function exists
+        id: check_lambda
+        run: |
+          set +e
+          aws lambda get-function --function-name s3-validator
+          echo "exists=$?" >> $GITHUB_OUTPUT
+          set -e
+
+      - name: Create Lambda function if not exists
+        if: steps.check_lambda.outputs.exists != '0'
+        run: |
+          aws lambda create-function \
+            --function-name s3-validator \
+            --runtime python3.10 \
+            --role arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/lab6-lambda \
+            
+            --handler s3_validation.lambda_handler \
+            --zip-file fileb://lambda.zip \
+            --timeout 30 \
+            --memory-size 128
+
+      - name: Update Lambda function code if exists
+        if: steps.check_lambda.outputs.exists == '0'
         run: |
           aws lambda update-function-code \
-            --function-name lambda-s3-validator \
-            --zip-file fileb://lambda/lambda.zip
+            --function-name s3-validator \
+            --zip-file fileb://lambda.zip
