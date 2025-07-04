@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import os
 import logging
 
-# Setup logging
+# Setup logging at module level
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -16,7 +16,7 @@ dynamodb = boto3.resource('dynamodb')
 stepfunctions = boto3.client('stepfunctions')
 
 # Environment Variables
-DDB_TABLE = os.environ['INGESTION_TABLE']
+DDB_TABLE = os.environ['file_ingestion_registry']
 STEP_FUNCTION_ARN = os.environ['STEP_FUNCTION_ARN']
 DEBOUNCE_SECONDS = int(os.environ.get('DEBOUNCE_SECONDS', 120))  # default 2 minutes
 
@@ -30,7 +30,12 @@ REQUIRED_HEADERS = {
 
 
 def lambda_handler(event, context):
-    for record in event['Records']:
+    records = event.get('Records')
+    if not records:
+        logger.warning("No 'Records' found in event; skipping processing.")
+        return {"status": "no records to process"}
+
+    for record in records:
         bucket = record['s3']['bucket']['name']
         key = unquote_plus(record['s3']['object']['key'])
         logger.info(f"Processing file s3://{bucket}/{key}")
@@ -59,7 +64,9 @@ def lambda_handler(event, context):
             if file_type == 'products':
                 validated_key = 'validated/products/products.csv'
                 s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
-                s3.delete_object(Bucket=bucket, Key=key)
+                # Skip deleting folder placeholders
+                if not key.endswith('/'):
+                    s3.delete_object(Bucket=bucket, Key=key)
 
                 # Update special DynamoDB item for latest products path
                 table.update_item(
@@ -68,7 +75,6 @@ def lambda_handler(event, context):
                     ExpressionAttributeValues={":path": validated_key}
                 )
                 logger.info(f"Updated latest products path to {validated_key}")
-                # No Step Function trigger or debounce for products file
                 continue
 
             # For orders and order_items, extract order_date from first data row
@@ -78,17 +84,16 @@ def lambda_handler(event, context):
 
             order_date = extract_order_date(file_type, headers, data_row)
 
-            # Destination path with partitioning by order_date
             filename = key.split('/')[-1]
             validated_key = f"validated/{file_type}/dt={order_date}/{filename}"
 
-            # Copy file to validated/ and delete original
             s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
-            s3.delete_object(Bucket=bucket, Key=key)
+            # Skip deleting folder placeholders
+            if not key.endswith('/'):
+                s3.delete_object(Bucket=bucket, Key=key)
 
             logger.info(f"Moved file to {validated_key}")
 
-            # Update ingestion registry and possibly trigger Step Function or debounce TTL
             update_registry(group_key, file_type, validated_key, order_date)
 
         except Exception as e:
@@ -132,7 +137,9 @@ def extract_order_date(file_type, headers, data_row):
 def handle_invalid_file(bucket, key, file_type, reason):
     rejected_key = key.replace('raw/', f'rejected/{file_type}/')
     s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=rejected_key)
-    s3.delete_object(Bucket=bucket, Key=key)
+    # Skip deleting folder placeholders
+    if not key.endswith('/'):
+        s3.delete_object(Bucket=bucket, Key=key)
 
     reason_key = rejected_key.replace('.csv', '_reason.json')
     s3.put_object(
