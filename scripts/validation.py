@@ -48,3 +48,48 @@ def write_validated_file(df, original_path, validated_base, label):
     validated_path = f"s3://{S3_BUCKET}/{validated_base}/{partition}/{filename}"
     logger.info(f"Writing validated {label} to {validated_path}")
     df.write.mode("overwrite").option("header", True).csv(validated_path)
+
+
+def main():
+    try:
+        logger.info("Reading orders from S3...")
+        orders_df = read_csv(ORDERS_PATH)
+
+        logger.info("Reading order_items from S3...")
+        order_items_df = read_csv(ORDER_ITEMS_PATH)
+
+        products_df = None
+        if PRODUCTS_PATH:
+            logger.info("Reading products from S3...")
+            products_df = read_csv(PRODUCTS_PATH)
+
+        logger.info("Validating non-null fields...")
+        validate_non_nulls(orders_df, ['order_id', 'user_id', 'created_at'], 'Orders')
+        validate_non_nulls(order_items_df, ['id', 'order_id', 'product_id', 'created_at'], 'Order Items')
+        if products_df is not None:
+            validate_non_nulls(products_df, ['id', 'sku', 'cost'], 'Products')
+
+        logger.info("Validating referential integrity...")
+        validate_referential_integrity(orders_df, order_items_df, products_df)
+
+        logger.info("Validation successful. Writing validated files to S3...")
+        write_validated_file(orders_df, ORDERS_PATH, "validated/orders", "Orders")
+        write_validated_file(order_items_df, ORDER_ITEMS_PATH, "validated/order_items", "Order Items")
+        if products_df is not None:
+            validated_path = f"s3://{S3_BUCKET}/validated/products/products.csv"
+            logger.info(f"Writing validated Products to {validated_path}")
+            products_df.write.mode("overwrite").option("header", True).csv(validated_path)
+
+        return {"status": "success"}
+
+    except DataValidationError as e:
+        logger.error(f"Validation failed: {str(e)}")
+        return {"status": "error", "error_type": e.error_type, "message": str(e)}
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        return {"status": "error", "error_type": "UNKNOWN", "message": str(e)}
+
+if __name__ == "__main__":
+    result = main()
+    if result['status'] != 'success':
+        exit(1)
