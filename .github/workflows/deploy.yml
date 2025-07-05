@@ -111,10 +111,10 @@ jobs:
       - name: Build and push transformation Docker image
         id: set-transformation-image
         run: |
-          IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
+         IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
           docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
-          echo "::set-output name=IMAGE_URI_TRANSFORMATION::$IMAGE_URI_TRANSFORMATION"
+          echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_OUTPUT
 
   register-ecs-tasks:
     runs-on: ubuntu-latest
@@ -138,11 +138,15 @@ jobs:
 
       - name: Replace image URI in validation task definition
         run: |
-          sed "s|\${IMAGE_URI_VALIDATION}|$IMAGE_URI_VALIDATION|g" ecs/ecs_taskdefinition_validation.json > rendered-task-def-validation.json
+           sed "s|\${IMAGE_URI_VALIDATION}|$IMAGE_URI_VALIDATION|g" ecs/ecs_taskdefinition_validation.json > temp-validation.json
+           sed "s|<ACCOUNT_ID>|${{ secrets.AWS_ACCOUNT_ID }}|g" temp-validation.json > temp-validation-2.json
+           sed "s|\${AWS_REGION}|${{ secrets.AWS_REGION }}|g" temp-validation-2.json > rendered-task-def-validation.json
 
       - name: Replace image URI in transformation task definition
         run: |
-          sed "s|\${IMAGE_URI_TRANSFORMATION}|$IMAGE_URI_TRANSFORMATION|g" ecs/ecs_taskdefinition_transformation.json > rendered-task-def-transformation.json
+          sed "s|\${IMAGE_URI_TRANSFORMATION}|$IMAGE_URI_TRANSFORMATION|g" ecs/ecs_taskdefinition_transformation.json > temp-transformation.json
+          sed "s|<ACCOUNT_ID>|${{ secrets.AWS_ACCOUNT_ID }}|g" temp-transformation.json > temp-transformation-2.json
+          sed "s|\${AWS_REGION}|${{ secrets.AWS_REGION }}|g" temp-transformation-2.json > rendered-task-def-transformation.json
 
       - name: Register ECS task definition - Validation
         run: |
