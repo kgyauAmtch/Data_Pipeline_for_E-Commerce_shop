@@ -101,6 +101,7 @@ jobs:
           echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION"
           docker build -t $IMAGE_URI_VALIDATION -f docker/dockerfile.validation .
           docker push $IMAGE_URI_VALIDATION
+          # Set output for downstream jobs
           echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION" >> $GITHUB_OUTPUT
 
       - name: Build and push transformation Docker image
@@ -110,7 +111,13 @@ jobs:
           echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION"
           docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
+          # Set output for downstream jobs
           echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_OUTPUT
+
+      - name: Debug outputs
+        run: |
+          echo "Validation Image URI output: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}"
+          echo "Transformation Image URI output: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}"
 
   register-ecs-tasks:
     runs-on: ubuntu-latest
