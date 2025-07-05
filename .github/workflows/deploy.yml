@@ -13,11 +13,15 @@ on:
       - main
 
 env:
-ECR_REPOSITORY: lab6/ecommerce-repo
+  ECR_REPOSITORY: lab6/ecommerce-repo
+   
 
 jobs:
   deploy-lambda:
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -42,7 +46,8 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
 
       - name: Check if Lambda function exists
         id: check_lambda
@@ -74,6 +79,13 @@ jobs:
   build-and-push-ecr:
     runs-on: ubuntu-latest
     needs: deploy-lambda
+    outputs:
+      IMAGE_URI_VALIDATION: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}
+      IMAGE_URI_TRANSFORMATION: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}
+    env:
+      ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -83,29 +95,37 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push validation Docker image
+        id: set-validation-image
         run: |
           IMAGE_URI_VALIDATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
-          echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION" >> $GITHUB_ENV
           docker build -t $IMAGE_URI_VALIDATION -f docker/Dockerfile.validation .
           docker push $IMAGE_URI_VALIDATION
+          echo "::set-output name=IMAGE_URI_VALIDATION::$IMAGE_URI_VALIDATION"
 
       - name: Build and push transformation Docker image
+        id: set-transformation-image
         run: |
           IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
-          echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_ENV
           docker build -t $IMAGE_URI_TRANSFORMATION -f docker/Dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
+          echo "::set-output name=IMAGE_URI_TRANSFORMATION::$IMAGE_URI_TRANSFORMATION"
 
   register-ecs-tasks:
     runs-on: ubuntu-latest
     needs: build-and-push-ecr
+    env:
+      IMAGE_URI_VALIDATION: ${{ needs.build-and-push-ecr.outputs.IMAGE_URI_VALIDATION }}
+      IMAGE_URI_TRANSFORMATION: ${{ needs.build-and-push-ecr.outputs.IMAGE_URI_TRANSFORMATION }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -115,7 +135,8 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
 
       - name: Replace image URI in validation task definition
         run: |
