@@ -1,13 +1,12 @@
-# Use Bitnami Spark base image
+# Use Bitnami Spark as base image
 FROM bitnami/spark:latest
 
-# Use root to install dependencies and set up environment
+# Switch to root to install dependencies and download JARs
 USER root
 
 # Set environment variables
 ENV HOME=/root
 ENV SPARK_LOCAL_IP=127.0.0.1
-ENV SPARK_SUBMIT_OPTIONS="--jars /app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain --conf spark.jars.ivy=/tmp/.ivy2"
 
 # Set working directory
 WORKDIR /app
@@ -16,18 +15,22 @@ WORKDIR /app
 COPY scripts/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy transformation and KPI scripts
+# Copy application scripts
 COPY scripts/transformation.py .
 COPY scripts/helperfunction.py .
 
-# Create JARs directory and download Spark S3 connector jars
+# Create JARs directory
 RUN mkdir -p /app/jars
+
+# Download Spark S3 dependencies
 ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar /app/jars/
 ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar /app/jars/
 
-# Optional: drop back to non-root user for security
+# Fix permissions so non-root user can read the JARs
+RUN chmod -R a+r /app/jars
+
+# Optional: Switch to non-root user for container execution (Bitnami uses UID 1001)
 USER 1001
 
-# Default command (can be overridden in ECS)
-CMD ["spark-submit", "--jars", "/app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar", "--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem", "--conf", "spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain", "transformation.py"]
-
+# Set default command to run the PySpark script via spark-submit
+CMD ["spark-submit","--jars", "/app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar", "--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem", "--conf", "spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain", "transformation.py"]
