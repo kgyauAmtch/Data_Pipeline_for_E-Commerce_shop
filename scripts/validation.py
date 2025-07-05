@@ -5,6 +5,11 @@ import os
 import logging
 from datetime import datetime
 
+print("=== ENVIRONMENT VARIABLES DEBUG ===")
+for key, val in os.environ.items():
+    print(f"{key} = {val}")
+print("===================================")
+
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
