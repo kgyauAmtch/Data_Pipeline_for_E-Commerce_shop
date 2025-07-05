@@ -29,6 +29,9 @@ class DataValidationError(Exception):
         self.error_type = error_type
 
 def read_csv(path):
+    # Convert s3:// to s3a:// if needed
+    if path.startswith('s3://'):
+        path = path.replace('s3://', 's3a://')
     return spark.read.option("header", True).csv(path)
 
 def validate_non_nulls(df, columns, file_label):
@@ -50,10 +53,9 @@ def write_validated_file(df, original_path, validated_base, label):
     filename = os.path.basename(original_path)
     order_date = df.select("created_at").first()["created_at"][:10]
     partition = f"dt={order_date}"
-    validated_path = f"s3://{S3_BUCKET}/{validated_base}/{partition}/{filename}"
+    validated_path = f"s3a://{S3_BUCKET}/{validated_base}/{partition}/{filename}"
     logger.info(f"Writing validated {label} to {validated_path}")
     df.write.mode("overwrite").option("header", True).csv(validated_path)
-
 
 def main():
     try:
@@ -81,7 +83,7 @@ def main():
         write_validated_file(orders_df, ORDERS_PATH, "validated/orders", "Orders")
         write_validated_file(order_items_df, ORDER_ITEMS_PATH, "validated/order_items", "Order Items")
         if products_df is not None:
-            validated_path = f"s3://{S3_BUCKET}/validated/products/products.csv"
+            validated_path = f"s3a://{S3_BUCKET}/validated/products/products.csv"
             logger.info(f"Writing validated Products to {validated_path}")
             products_df.write.mode("overwrite").option("header", True).csv(validated_path)
 
