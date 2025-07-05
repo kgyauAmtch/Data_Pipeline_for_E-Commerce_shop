@@ -1,0 +1,14 @@
+FROM bitnami/spark:latest
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY scripts/requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Copy your scripts into the container
+COPY scripts/transformation.py .
+COPY scripts/helperfunction.py .
+
+# Default entrypoint for transformation
+ENTRYPOINT ["spark-submit", "transformation.py"]
