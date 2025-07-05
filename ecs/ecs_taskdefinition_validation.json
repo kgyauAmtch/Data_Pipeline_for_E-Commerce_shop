@@ -19,6 +19,10 @@
          {
         "name": "HOME",
         "value": "/root"
+      },
+      {
+        "name": "SPARK_SUBMIT_OPTIONS",
+        "value": "--conf spark.jars.ivy=/tmp/.ivy2"
       }
       ],
       "logConfiguration": {

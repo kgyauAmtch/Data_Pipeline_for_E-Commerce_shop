@@ -13,4 +13,5 @@ COPY scripts/helperfunction.py .
 # Default entrypoint for transformation
 ENV HOME=/root
 ENV SPARK_LOCAL_IP=127.0.0.1
-ENTRYPOINT ["spark-submit", "transformation.py"]
+ENV SPARK_SUBMIT_OPTIONS="--conf spark.jars.ivy=/tmp/.ivy2"
+ENTRYPOINT ["sh", "-c", "spark-submit $SPARK_SUBMIT_OPTIONS transformation.py"]
