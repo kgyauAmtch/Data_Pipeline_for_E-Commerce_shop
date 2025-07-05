@@ -11,4 +11,5 @@ COPY scripts/validation.py .
 COPY scripts/helperfunction.py .
 
 # Default entrypoint for validation
+ENV SPARK_LOCAL_IP=127.0.0.1
 ENTRYPOINT ["spark-submit", "validation.py"]
