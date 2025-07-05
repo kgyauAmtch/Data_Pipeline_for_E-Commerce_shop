@@ -1,4 +1,10 @@
+# Use Bitnami Spark as base image
 FROM bitnami/spark:latest
+
+# Set environment variables
+ENV HOME=/root
+ENV SPARK_LOCAL_IP=127.0.0.1
+ENV SPARK_SUBMIT_OPTIONS="--jars /app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain --conf spark.jars.ivy=/tmp/.ivy2"
 
 # Set working directory
 WORKDIR /app
@@ -7,23 +13,16 @@ WORKDIR /app
 COPY scripts/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy transformation and helper scripts
-COPY scripts/transformation.py .
+# Copy application scripts
+COPY scripts/validation.py .
 COPY scripts/helperfunction.py .
 
-# Create a directory for required JARs
-RUN mkdir -p /opt/spark/jars
+# Create JARs directory (no root permission needed)
+RUN mkdir -p /app/jars
 
-# Download Hadoop-AWS and AWS SDK JARs for S3 support
-RUN curl -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
- && curl -o /opt/spark/jars/aws-java-sdk-bundle-1.12.406.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar
+# Download necessary Hadoop-AWS and AWS SDK JARs for Spark S3 support
+ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar /app/jars/
+ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar /app/jars/
 
-# Set environment variables
-ENV HOME=/root
-ENV SPARK_LOCAL_IP=127.0.0.1
-ENV SPARK_SUBMIT_OPTIONS="--jars /opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.406.jar \
---conf spark.jars.ivy=/tmp/.ivy2 \
---conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain"
-
-# Set the default entrypoint for transformation
-ENTRYPOINT ["sh", "-c", "spark-submit $SPARK_SUBMIT_OPTIONS transformation.py"]
+# Default command
+CMD ["python", "validation.py"]

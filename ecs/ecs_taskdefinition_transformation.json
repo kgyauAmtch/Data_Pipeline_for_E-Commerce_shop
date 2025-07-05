@@ -22,7 +22,7 @@
       },
       {
         "name": "SPARK_SUBMIT_OPTIONS",
-        "value": "--jars /opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.406.jar --conf spark.jars.ivy=/tmp/.ivy2 --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain"
+        "value": "--jars /app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain --conf spark.jars.ivy=/tmp/.ivy2"
       }
       ],
       "logConfiguration": {
