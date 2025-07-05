@@ -11,6 +11,12 @@
       "name": "validation-container",
       "image": "${IMAGE_URI_VALIDATION}",
       "essential": true,
+      "environment": [
+        {
+          "name": "SPARK_LOCAL_IP",
+          "value": "127.0.0.1"
+        }
+      ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
