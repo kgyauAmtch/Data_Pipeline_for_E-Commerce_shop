@@ -12,6 +12,7 @@ on:
     branches:
       - main
 
+
 env:
   ECR_REPOSITORY: lab6/ecommerce-repo
    
@@ -83,7 +84,7 @@ jobs:
       IMAGE_URI_VALIDATION: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}
       IMAGE_URI_TRANSFORMATION: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}
     env:
-      ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+      ECR_REPOSITORY: lab6/ecommerce-repo
       AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
