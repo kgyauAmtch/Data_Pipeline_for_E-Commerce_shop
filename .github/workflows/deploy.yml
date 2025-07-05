@@ -105,7 +105,8 @@ jobs:
           echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> image_uris.txt
 
       - name: Upload image URIs as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
+
         with:
           name: image-uris
           path: image_uris.txt
@@ -128,7 +129,8 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download image URIs artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
+
         with:
           name: image-uris
 
