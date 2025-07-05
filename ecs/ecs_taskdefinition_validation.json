@@ -21,9 +21,29 @@
         "value": "/root"
       },
       {
-        "name": "SPARK_SUBMIT_OPTIONS",
-        "value": "--jars /app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar --conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain --conf spark.jars.ivy=/tmp/.ivy2"
-      }
+                    "name": "S3_BUCKET_NAME",
+                    "value": "lab6-bucket-ecs"
+                },
+                {
+                    "name": "ORDERS_PATH",
+                    "value": "s3://lab6-bucket-ecs/raw/orders/orders_part2.csv"
+                },
+                {
+                    "name": "ORDER_ITEMS_PATH",
+                    "value": "s3://lab6-bucket-ecs/raw/order_items/order_items_part2.csv"
+                },
+                {
+                    "name": "PRODUCTS_PATH",
+                    "value": "s3://lab6-bucket-ecs/raw/products/products.csv"
+                },
+                {
+                    "name": "AWS_DEFAULT_REGION",
+                    "value": "eu-north-1"
+                },
+                {
+                    "name": "MASTER",
+                    "value": "local[*]"
+                }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
