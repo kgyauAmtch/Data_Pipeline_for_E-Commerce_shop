@@ -1,36 +1,39 @@
-# Use Bitnami Spark as base image
+# Use Bitnami Spark base image (includes Spark & Java pre-configured)
 FROM bitnami/spark:latest
 
-# Switch to root to install dependencies and download JARs
+# Switch to root to install dependencies and add resources
 USER root
 
 # Set environment variables
-ENV HOME=/root
-ENV SPARK_LOCAL_IP=127.0.0.1
+ENV HOME=/root \
+    SPARK_LOCAL_IP=127.0.0.1 \
+    SPARK_VERSION=3.4.1 \
+    HADOOP_VERSION=3
 
-# Set working directory
+# Working directory
 WORKDIR /app
 
-# Install Python dependencies
+# Install Python packages
 COPY scripts/requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application scripts
 COPY scripts/validation.py .
 COPY scripts/helperfunction.py .
 
-# Create JARs directory
+# JARs directory for Spark S3 dependencies
 RUN mkdir -p /app/jars
 
-# Download Spark S3 dependencies
+# Download AWS JARs required for s3a:// support (Glue 5.0 compatible)
 ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar /app/jars/
 ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar /app/jars/
 
-# Fix permissions so non-root user can read the JARs
+# Set appropriate permissions
 RUN chmod -R a+r /app/jars
 
-# Optional: Switch to non-root user for container execution (Bitnami uses UID 1001)
+# Optional: switch to non-root user (Bitnami default user is UID 1001)
 USER 1001
 
-# Set default command to run the PySpark script via spark-submit
-CMD ["spark-submit","--jars", "/app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar","--conf", "spark.driver.extraClassPath=/app/jars/*","--conf", "spark.executor.extraClassPath=/app/jars/*","--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain","--conf", "spark.hadoop.fs.s3a.connection.timeout=60000","--conf", "spark.hadoop.fs.s3a.connection.establish.timeout=5000","--conf", "spark.hadoop.fs.s3a.attempts.maximum=3","--conf", "spark.driver.host=0.0.0.0","--conf", "spark.driver.bindAddress=0.0.0.0","validation.py"]
+# Default Spark submit command to run validation.py with all config set
+CMD ["spark-submit","--jars", "/app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar","--conf", "spark.driver.extraClassPath=/app/jars/*","--conf", "spark.executor.extraClassPath=/app/jars/*","--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain","--conf", "spark.hadoop.fs.s3a.connection.timeout=60000","--conf", "spark.hadoop.fs.s3a.connection.establish.timeout=5000","--conf", "spark.hadoop.fs.s3a.attempts.maximum=3","--conf", "spark.hadoop.fs.s3a.path.style.access=true","--conf", "spark.hadoop.fs.s3a.fast.upload=true","--conf", "spark.driver.host=0.0.0.0","--conf", "spark.driver.bindAddress=0.0.0.0","validation.py"]
