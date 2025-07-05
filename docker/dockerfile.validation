@@ -1,17 +1,29 @@
 FROM bitnami/spark:latest
 
+# Set working directory
 WORKDIR /app
 
-# Install Python dependencies
+# Copy requirements and install Python dependencies
 COPY scripts/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy your scripts into the container
+# Copy your Python scripts
 COPY scripts/validation.py .
 COPY scripts/helperfunction.py .
 
-# Default entrypoint for validation
+# Create a directory for additional JARs
+RUN mkdir -p /opt/spark/jars
+
+# Download necessary Hadoop-AWS and AWS SDK JARs for S3 access
+RUN curl -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
+ && curl -o /opt/spark/jars/aws-java-sdk-bundle-1.12.406.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar
+
+# Set environment variables for Spark and Ivy to avoid resolution errors
 ENV HOME=/root
 ENV SPARK_LOCAL_IP=127.0.0.1
-ENV SPARK_SUBMIT_OPTIONS="--conf spark.jars.ivy=/tmp/.ivy2"
+ENV SPARK_SUBMIT_OPTIONS="--jars /opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.406.jar \
+--conf spark.jars.ivy=/tmp/.ivy2 \
+--conf spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain"
+
+# Default entrypoint to run validation
 ENTRYPOINT ["sh", "-c", "spark-submit $SPARK_SUBMIT_OPTIONS validation.py"]
