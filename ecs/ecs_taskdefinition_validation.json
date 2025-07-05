@@ -15,7 +15,11 @@
         {
           "name": "SPARK_LOCAL_IP",
           "value": "127.0.0.1"
-        }
+        },
+         {
+        "name": "HOME",
+        "value": "/root"
+      }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
