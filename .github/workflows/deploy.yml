@@ -78,9 +78,6 @@ jobs:
     outputs:
       IMAGE_URI_VALIDATION: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}
       IMAGE_URI_TRANSFORMATION: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}
-    env:
-      ECR_REPOSITORY: lab6/ecommerce-repo
-      aws-region: ${{ secrets.AWS_REGION }}
 
     steps:
       - name: Checkout code
@@ -101,6 +98,7 @@ jobs:
         id: set-validation-image
         run: |
           IMAGE_URI_VALIDATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
+          echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION"
           docker build -t $IMAGE_URI_VALIDATION -f docker/dockerfile.validation .
           docker push $IMAGE_URI_VALIDATION
           echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION" >> $GITHUB_OUTPUT
@@ -109,6 +107,7 @@ jobs:
         id: set-transformation-image
         run: |
           IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
+          echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION"
           docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
           echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_OUTPUT
@@ -119,7 +118,7 @@ jobs:
     env:
       IMAGE_URI_VALIDATION: ${{ needs.build-and-push-ecr.outputs.IMAGE_URI_VALIDATION }}
       IMAGE_URI_TRANSFORMATION: ${{ needs.build-and-push-ecr.outputs.IMAGE_URI_TRANSFORMATION }}
-      aws-region: ${{ secrets.AWS_REGION }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
       - name: Checkout code
@@ -141,13 +140,13 @@ jobs:
         run: |
           sed "s|\${IMAGE_URI_VALIDATION}|$IMAGE_URI_VALIDATION|g" ecs/ecs_taskdefinition_validation.json > temp-validation.json
           sed "s|<ACCOUNT_ID>|${{ secrets.AWS_ACCOUNT_ID }}|g" temp-validation.json > temp-validation-2.json
-          sed "s|\${AWS_REGION}|${{ secrets.AWS_REGION }}|g" temp-validation-2.json > rendered-task-def-validation.json
+          sed "s|\${AWS_REGION}|${AWS_REGION}|g" temp-validation-2.json > rendered-task-def-validation.json
 
       - name: Replace image URI in transformation task definition
         run: |
           sed "s|\${IMAGE_URI_TRANSFORMATION}|$IMAGE_URI_TRANSFORMATION|g" ecs/ecs_taskdefinition_transformation.json > temp-transformation.json
           sed "s|<ACCOUNT_ID>|${{ secrets.AWS_ACCOUNT_ID }}|g" temp-transformation.json > temp-transformation-2.json
-          sed "s|\${AWS_REGION}|${{ secrets.AWS_REGION }}|g" temp-transformation-2.json > rendered-task-def-transformation.json
+          sed "s|\${AWS_REGION}|${AWS_REGION}|g" temp-transformation-2.json > rendered-task-def-transformation.json
 
       - name: Register ECS task definition - Validation
         run: |
