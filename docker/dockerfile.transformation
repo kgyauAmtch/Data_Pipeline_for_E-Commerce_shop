@@ -1,5 +1,8 @@
-# Use Bitnami Spark as base image
+# Use Bitnami Spark base image
 FROM bitnami/spark:latest
+
+# Use root to install dependencies and set up environment
+USER root
 
 # Set environment variables
 ENV HOME=/root
@@ -13,16 +16,17 @@ WORKDIR /app
 COPY scripts/requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application scripts
-COPY scripts/validation.py .
+# Copy transformation and KPI scripts
+COPY scripts/transformation.py .
 COPY scripts/helperfunction.py .
 
-# Create JARs directory (no root permission needed)
+# Create JARs directory and download Spark S3 connector jars
 RUN mkdir -p /app/jars
-
-# Download necessary Hadoop-AWS and AWS SDK JARs for Spark S3 support
 ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar /app/jars/
 ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar /app/jars/
 
-# Default command
-CMD ["python", "validation.py"]
+# Optional: drop back to non-root user for security
+USER 1001
+
+# Default command (can be overridden in ECS)
+CMD ["python", "transformation.py"]
