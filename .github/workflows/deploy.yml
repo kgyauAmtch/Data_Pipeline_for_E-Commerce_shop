@@ -18,7 +18,6 @@ env:
 jobs:
   deploy-lambda:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -76,8 +75,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-lambda
     outputs:
-      IMAGE_URI_VALIDATION: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}
-      IMAGE_URI_TRANSFORMATION: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}
+      IMAGE_URI_VALIDATION: ${{ steps.set-validation-image.outputs.image_uri }}
+      IMAGE_URI_TRANSFORMATION: ${{ steps.set-transformation-image.outputs.image_uri }}
 
     steps:
       - name: Checkout code
@@ -99,25 +98,25 @@ jobs:
       - name: Build and push validation Docker image
         id: set-validation-image
         run: |
-          IMAGE_URI_VALIDATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
-          echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION"
-          docker build -t $IMAGE_URI_VALIDATION -f docker/dockerfile.validation .
-          docker push $IMAGE_URI_VALIDATION
-          echo "::set-output name=IMAGE_URI_VALIDATION::$IMAGE_URI_VALIDATION"
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
+          echo "Building and pushing $IMAGE_URI"
+          docker build -t $IMAGE_URI -f docker/dockerfile.validation .
+          docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
       - name: Build and push transformation Docker image
         id: set-transformation-image
         run: |
-          IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
-          echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION"
-          docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
-          docker push $IMAGE_URI_TRANSFORMATION
-          echo "::set-output name=IMAGE_URI_TRANSFORMATION::$IMAGE_URI_TRANSFORMATION"
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
+          echo "Building and pushing $IMAGE_URI"
+          docker build -t $IMAGE_URI -f docker/dockerfile.transformation .
+          docker push $IMAGE_URI
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-      - name: Debug outputs
+      - name: Debug image URIs
         run: |
-          echo "Validation Image URI output: ${{ steps.set-validation-image.outputs.IMAGE_URI_VALIDATION }}"
-          echo "Transformation Image URI output: ${{ steps.set-transformation-image.outputs.IMAGE_URI_TRANSFORMATION }}"
+          echo "Validation image URI: ${{ steps.set-validation-image.outputs.image_uri }}"
+          echo "Transformation image URI: ${{ steps.set-transformation-image.outputs.image_uri }}"
 
   register-ecs-tasks:
     runs-on: ubuntu-latest
