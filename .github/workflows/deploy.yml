@@ -103,7 +103,6 @@ jobs:
           IMAGE_URI_VALIDATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
           docker build -t $IMAGE_URI_VALIDATION -f docker/dockerfile.validation .
           docker push $IMAGE_URI_VALIDATION
-          echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION" >> $GITHUB_ENV
           echo "IMAGE_URI_VALIDATION=$IMAGE_URI_VALIDATION" >> $GITHUB_OUTPUT
 
       - name: Build and push transformation Docker image
@@ -112,7 +111,6 @@ jobs:
           IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
           docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
-          echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_ENV
           echo "IMAGE_URI_TRANSFORMATION=$IMAGE_URI_TRANSFORMATION" >> $GITHUB_OUTPUT
 
   register-ecs-tasks:
