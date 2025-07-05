@@ -104,7 +104,7 @@ jobs:
         id: set-validation-image
         run: |
           IMAGE_URI_VALIDATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:validation"
-          docker build -t $IMAGE_URI_VALIDATION -f docker/Dockerfile.validation .
+          docker build -t $IMAGE_URI_VALIDATION -f docker/dockerfile.validation .
           docker push $IMAGE_URI_VALIDATION
           echo "::set-output name=IMAGE_URI_VALIDATION::$IMAGE_URI_VALIDATION"
 
@@ -112,7 +112,7 @@ jobs:
         id: set-transformation-image
         run: |
           IMAGE_URI_TRANSFORMATION="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:transformation"
-          docker build -t $IMAGE_URI_TRANSFORMATION -f docker/Dockerfile.transformation .
+          docker build -t $IMAGE_URI_TRANSFORMATION -f docker/dockerfile.transformation .
           docker push $IMAGE_URI_TRANSFORMATION
           echo "::set-output name=IMAGE_URI_TRANSFORMATION::$IMAGE_URI_TRANSFORMATION"
 
