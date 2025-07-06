@@ -1,4 +1,3 @@
-# validation.py (PySpark Version)
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, isnan, isnull
 import os
@@ -21,7 +20,14 @@ ORDER_ITEMS_PATH = os.environ['ORDER_ITEMS_PATH']
 PRODUCTS_PATH = os.environ.get('PRODUCTS_PATH')  # optional
 
 # Initialize Spark session
-spark = SparkSession.builder.appName("ValidationJob").getOrCreate()
+spark = SparkSession.builder \
+    .appName("ValidationJob") \
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain") \
+    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+    .config("spark.hadoop.fs.s3a.connection.timeout", "60000") \
+    .config("spark.hadoop.fs.s3a.endpoint", "s3.eu-north-1.amazonaws.com") \
+    .getOrCreate()
 
 class DataValidationError(Exception):
     def __init__(self, message, error_type=None):
