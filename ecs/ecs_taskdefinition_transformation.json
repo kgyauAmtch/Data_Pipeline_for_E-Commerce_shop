@@ -26,15 +26,15 @@
                     "value": "lab6-bucket-ecs"
                 },
                 {
-                    "name": "ORDERS_PATH",
+                    "name": "VALIDATED_ORDERS_PATH",
                     "value": "s3://lab6-bucket-ecs/validated/orders/"
                 },
                 {
-                    "name": "ORDER_ITEMS_PATH",
+                    "name": "VALIDATED_ORDER_ITEMS_PATH",
                     "value": "s3://lab6-bucket-ecs/validated/order_items/"
                 },
                 {
-                    "name": "PRODUCTS_PATH",
+                    "name": "VALIDATED_PRODUCTS_PATH",
                     "value": "s3://lab6-bucket-ecs/validated/products/"
                 },
                 {
