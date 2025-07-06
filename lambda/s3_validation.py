@@ -1,26 +1,24 @@
 import boto3
-import csv
+import os
 import json
-from io import StringIO
+import logging
 from urllib.parse import unquote_plus
 from datetime import datetime, timedelta
-import os
-import logging
+import csv
+from io import StringIO
 
-# Setup logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client('s3')
+sns = boto3.client('sns')
 dynamodb = boto3.resource('dynamodb')
 stepfunctions = boto3.client('stepfunctions')
 
-# Environment Variables
 DDB_TABLE = os.environ['INGESTION_TABLE']
 STEP_FUNCTION_ARN = os.environ['STEP_FUNCTION_ARN']
-DEBOUNCE_SECONDS = int(os.environ.get('DEBOUNCE_SECONDS', 120))  # default 2 minutes
-
-table = dynamodb.Table(DDB_TABLE)
+SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
+DEBOUNCE_SECONDS = int(os.environ.get('DEBOUNCE_SECONDS', 120))
 
 REQUIRED_HEADERS = {
     'orders': ['order_id', 'user_id', 'status', 'created_at', 'returned_at', 'shipped_at', 'delivered_at', 'num_of_item'],
@@ -28,13 +26,17 @@ REQUIRED_HEADERS = {
     'products': ['id', 'sku', 'cost', 'category', 'name', 'brand', 'retail_price', 'department']
 }
 
-def lambda_handler(event, context):
-    records = event.get('Records')
-    if not records:
-        logger.warning("No 'Records' found in event; skipping processing.")
-        return {"validation_status": "FAILED", "reason": "No records to process"}
+table = dynamodb.Table(DDB_TABLE)
 
-    overall_success = True  # Track global validation result
+def lambda_handler(event, context):
+    records = event.get('Records', [])
+    if not records:
+        logger.warning("No records found in event")
+        return {"status": "no_records"}
+
+    # Use current UTC date as group_key for all files in this event
+    group_key = datetime.utcnow().strftime('%Y-%m-%d')
+    logger.info(f"Using ingestion date as group_key: {group_key}")
 
     for record in records:
         bucket = record['s3']['bucket']['name']
@@ -42,144 +44,158 @@ def lambda_handler(event, context):
         logger.info(f"Processing file s3://{bucket}/{key}")
 
         try:
+            file_type, part = parse_filename_info(key)
+            if not all([file_type, part]):
+                raise Exception(f"File {key} does not conform to naming conventions (e.g., orders_part1.csv).")
+
             obj = s3.get_object(Bucket=bucket, Key=key)
-            lines = obj['Body'].read().decode('utf-8').splitlines()
-            reader = csv.reader(lines)
+            csv_content = StringIO(obj['Body'].read().decode('utf-8'))
+            reader = csv.reader(csv_content)
             headers = next(reader, None)
 
             if headers is None:
                 raise Exception("File has no header row")
 
-            file_type = detect_file_type(key)
-            group_key = extract_group_key(key)
+            validate_columns(file_type, headers)
+            logger.info(f"Column validation passed for {key}")
 
-            if file_type not in REQUIRED_HEADERS:
-                raise Exception(f"Unsupported file type in key: {key}")
+            now_ts = int(datetime.utcnow().timestamp())
+            debounce_ttl = now_ts + DEBOUNCE_SECONDS
 
-            # Validate headers
-            if not set(REQUIRED_HEADERS[file_type]).issubset(set(headers)):
-                handle_invalid_file(bucket, key, file_type, reason="Missing required columns")
-                overall_success = False
-                continue
+            table.put_item(
+                Item={
+                    'group_key': group_key,
+                    'data_type_part': f"{file_type}#{part}",
+                    's3_path': key,
+                    'arrival_timestamp': now_ts,
+                    'processed_flag': False,
+                    'debounce_ttl': debounce_ttl
+                }
+            )
+            logger.info(f"Updated DynamoDB for group_key={group_key}, data_type={file_type}, part={part}")
 
-            # Products file: always copied to same location
-            if file_type == 'products':
-                validated_key = 'validated/products/products.csv'
-                s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=validated_key)
-                if not key.endswith('/'):
-                    s3.delete_object(Bucket=bucket, Key=key)
-
-                table.update_item(
-                    Key={"group_key": "latest_products"},
-                    UpdateExpression="SET products_path = :path",
-                    ExpressionAttributeValues={":path": validated_key}
-                )
-                logger.info(f"Updated latest products path to {validated_key}")
-                continue
-
-            # Extract order date
-            data_row = next(reader, None)
-            if data_row is None:
-                raise Exception("File has no data rows")
-
-            order_date = extract_order_date(file_type, headers, data_row)
-
-            logger.info(f"Header validation passed for file: s3://{bucket}/{key}. Leaving in raw/")
-
-            # Update registry (ECS will pick it up)
-            update_registry(group_key, file_type, key, order_date)
+            if ready_to_process(group_key):
+                start_step_function(group_key)
+                mark_all_parts_processing_started(group_key)
+            else:
+                logger.info(f"Waiting for more parts for group_key={group_key}, debounce TTL set.")
 
         except Exception as e:
-            logger.error(f"Error processing file {key}: {str(e)}")
-            handle_invalid_file(bucket, key, file_type="unknown", reason=str(e))
-            overall_success = False
+            logger.error(f"Processing failed for file {key}: {e}")
+            handle_invalid_file(bucket, key, file_type, reason=str(e))
+            send_sns_alert(bucket, key, file_type, str(e))
 
-    # Final status for Step Function Choice state
-    if overall_success:
-        return {"validation_status": "SUCCESS"}
-    else:
-        return {"validation_status": "FAILED"}
+    return {"status": "processed"}
 
-def detect_file_type(key):
-    if "order_items" in key:
-        return "order_items"
-    elif "orders" in key:
-        return "orders"
-    elif "products" in key:
-        return "products"
-    else:
-        return "unknown"
-
-def extract_group_key(key):
+def parse_filename_info(key):
     filename = key.split('/')[-1]
     parts = filename.split('_')
-    last_part = parts[-1].replace('.csv', '')
-    return last_part
+    if len(parts) >= 2:
+        data_type = parts[0]
+        part_with_ext = parts[1]
+        part = part_with_ext.split('.')[0]
+        return data_type, part
+    return None, None
 
-def extract_order_date(file_type, headers, data_row):
-    created_at_idx = headers.index('created_at')
-    created_at = data_row[created_at_idx]
-    try:
-        return datetime.strptime(created_at[:10], '%Y-%m-%d').strftime('%Y-%m-%d')
-    except Exception:
-        logger.warning(f"Malformed created_at date: {created_at}, defaulting to today")
-        return datetime.utcnow().strftime('%Y-%m-%d')
+def validate_columns(file_type, headers):
+    required_cols = set(REQUIRED_HEADERS.get(file_type, []))
+    if not required_cols:
+        raise Exception(f"No required headers defined for file type: {file_type}")
+
+    file_cols = set(headers)
+    missing_cols = required_cols - file_cols
+    if missing_cols:
+        raise Exception(f"Missing required columns for {file_type}: {sorted(missing_cols)}")
 
 def handle_invalid_file(bucket, key, file_type, reason):
-    rejected_key = key.replace('raw/', f'rejected/{file_type}/')
-    s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=rejected_key)
-    if not key.endswith('/'):
+    rejected_key_prefix = 'rejected/'
+    base_key = key.replace('raw/', '')
+    rejected_key = f"{rejected_key_prefix}{file_type}/{base_key}"
+
+    try:
+        s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': key}, Key=rejected_key)
         s3.delete_object(Bucket=bucket, Key=key)
+        logger.info(f"Moved invalid file from {key} to {rejected_key}")
 
-    reason_key = rejected_key.replace('.csv', '_reason.json')
-    s3.put_object(
-        Bucket=bucket,
-        Key=reason_key,
-        Body=json.dumps({"reason": reason, "original_key": key}),
-        ContentType='application/json'
-    )
-    logger.info(f"Moved invalid file to {rejected_key} with reason: {reason}")
+        reason_key = rejected_key.replace('.csv', '_reason.json')
+        s3.put_object(
+            Bucket=bucket,
+            Key=reason_key,
+            Body=json.dumps({"reason": reason, "original_key": key, "rejected_at": datetime.utcnow().isoformat()}),
+            ContentType='application/json'
+        )
+        logger.info(f"Wrote rejection reason to {reason_key}")
+    except Exception as copy_err:
+        logger.error(f"Failed to move or log rejected file {key}: {copy_err}")
 
-def update_registry(group_key, file_type, s3_path, order_date):
-    update_expr = "SET #file_path = :path, #has_flag = :trueval, order_date = :dt"
-    expr_attr_names = {
-        "#file_path": f"{file_type}_path",
-        "#has_flag": f"has_{file_type}"
+def send_sns_alert(bucket, key, file_type, reason):
+    message = {
+        "alert_type": "File Validation Failure",
+        "bucket": bucket,
+        "key": key,
+        "file_type": file_type,
+        "reason": reason,
+        "alert_time": datetime.utcnow().isoformat() + "Z"
     }
-    expr_attr_values = {
-        ":path": s3_path,
-        ":trueval": True,
-        ":dt": order_date
-    }
+    try:
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=f"DATA INGESTION ALERT: Validation Failed for {file_type} - {key}",
+            Message=json.dumps(message, indent=2)
+        )
+        logger.info(f"SNS alert sent for file {key}")
+    except Exception as sns_err:
+        logger.error(f"Failed to send SNS alert for file {key}: {sns_err}")
 
-    response = table.update_item(
-        Key={"group_key": group_key},
-        UpdateExpression=update_expr,
-        ExpressionAttributeNames=expr_attr_names,
-        ExpressionAttributeValues=expr_attr_values,
-        ReturnValues="ALL_NEW"
+def ready_to_process(group_key):
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('group_key').eq(group_key),
+        FilterExpression=boto3.dynamodb.conditions.Attr('processed_flag').eq(False)
     )
+    items = response.get('Items', [])
+    data_types_present = set(item['data_type_part'].split('#')[0] for item in items)
+    required_data_types_for_processing = {'orders', 'order_items'}
+    return required_data_types_for_processing.issubset(data_types_present)
 
-    item = response.get('Attributes', {})
+def start_step_function(group_key):
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('group_key').eq(group_key),
+        FilterExpression=boto3.dynamodb.conditions.Attr('processed_flag').eq(False)
+    )
+    items = response.get('Items', [])
+    input_payload = {
+        "group_key": group_key,
+        "parts_to_process": {item['data_type_part']: item['s3_path'] for item in items},
+        "trigger_source": "file_arrival_lambda"
+    }
+    logger.info(f"Step Function input payload: {json.dumps(input_payload)}")
 
-    if file_type in ['orders', 'order_items']:
-        if item.get("has_orders") and item.get("has_order_items"):
-            logger.info(f"Both orders and order_items present for group {group_key}, triggering Step Function")
-            stepfunctions.start_execution(
-                stateMachineArn=STEP_FUNCTION_ARN,
-                input=json.dumps({
-                    "group_key": group_key,
-                    "order_date": order_date,
-                    "orders_path": item.get("orders_path"),
-                    "order_items_path": item.get("order_items_path"),
-                    "products_path": item.get("products_path")
-                })
+    try:
+        resp = stepfunctions.start_execution(
+            stateMachineArn=STEP_FUNCTION_ARN,
+            input=json.dumps(input_payload)
+        )
+        logger.info(f"Started Step Function for group_key={group_key}, executionArn={resp['executionArn']}")
+    except Exception as e:
+        logger.error(f"Failed to start Step Function for group_key={group_key}: {e}")
+
+def mark_all_parts_processing_started(group_key):
+    response = table.query(
+        KeyConditionExpression=boto3.dynamodb.conditions.Key('group_key').eq(group_key),
+        FilterExpression=boto3.dynamodb.conditions.Attr('processed_flag').eq(False)
+    )
+    items = response.get('Items', [])
+    if not items:
+        logger.info(f"No unprocessed items found for group_key={group_key} to mark as processing started.")
+        return
+
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.put_item(
+                Item={
+                    **item,
+                    'processed_flag': True,
+                    'debounce_ttl': None
+                }
             )
-        else:
-            ttl = int((datetime.utcnow() + timedelta(seconds=DEBOUNCE_SECONDS)).timestamp())
-            table.update_item(
-                Key={"group_key": group_key},
-                UpdateExpression="SET debounce_ttl = :ttl",
-                ExpressionAttributeValues={":ttl": ttl}
-            )
-            logger.info(f"Set debounce TTL for group {group_key} to {ttl}")
+    logger.info(f"Marked {len(items)} parts as processing started for group_key={group_key}")
