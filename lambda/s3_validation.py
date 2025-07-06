@@ -89,13 +89,21 @@ def lambda_handler(event, context):
 
 def parse_filename_info(key):
     filename = key.split('/')[-1]
-    parts = filename.split('_')
-    if len(parts) >= 2:
-        data_type = parts[0]
-        part_with_ext = parts[1]
-        part = part_with_ext.split('.')[0]
-        return data_type, part
-    return None, None
+    if filename == 'products.csv':
+        return 'products', '1'
+    
+    name_part, ext = filename.rsplit('.', 1)
+    parts = name_part.split('_')
+    
+    if len(parts) < 2:
+        return None, None
+
+    part = parts[-1] 
+    data_type = '_'.join(parts[:-1])  
+
+    return data_type, part
+
+
 
 def validate_columns(file_type, headers):
     required_cols = set(REQUIRED_HEADERS.get(file_type, []))
