@@ -4,6 +4,7 @@ from delta.tables import DeltaTable
 from delta import configure_spark_with_delta_pip
 import os
 import logging
+import json
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -33,7 +34,6 @@ class DataValidationError(Exception):
         self.error_type = error_type
 
 def read_delta_or_csv(path):
-    # Convert s3:// to s3a://
     if path.startswith('s3://'):
         path = path.replace('s3://', 's3a://')
     try:
@@ -60,12 +60,11 @@ def validate_referential_integrity(orders_df, order_items_df, products_df):
         if missing_products.count() > 0:
             raise DataValidationError("Order items reference missing products", "REFERENTIAL_ERROR")
 
-def write_validated_delta(df, validated_base, label):
-    order_date = df.select("created_at").first()["created_at"][:10]
+def write_validated_delta(df, validated_base, label, partition_value=None):
     partition_col = "dt"
-    df_with_partition = df.withColumn(partition_col, lit(order_date))
+    df_with_partition = df.withColumn(partition_col, lit(partition_value))
     validated_path = f"s3a://{S3_BUCKET}/{validated_base}"
-    logger.info(f"Writing validated {label} Delta table to {validated_path} partitioned by {partition_col}={order_date}")
+    logger.info(f"Writing validated {label} Delta table to {validated_path} partitioned by {partition_col}={partition_value}")
     df_with_partition.write.format("delta").mode("overwrite").partitionBy(partition_col).save(validated_path)
 
 def main():
@@ -91,14 +90,17 @@ def main():
         validate_referential_integrity(orders_df, order_items_df, products_df)
 
         logger.info("Validation successful. Writing validated Delta tables to S3...")
-        write_validated_delta(orders_df, "validated/orders", "Orders")
-        write_validated_delta(order_items_df, "validated/order_items", "Order Items")
+
+        order_date = orders_df.select("created_at").first()["created_at"][:10]
+
+        write_validated_delta(orders_df, "validated/orders", "Orders", order_date)
+        write_validated_delta(order_items_df, "validated/order_items", "Order Items", order_date)
         if products_df is not None:
             validated_products_path = f"s3a://{S3_BUCKET}/validated/products"
             logger.info(f"Writing validated Products Delta table to {validated_products_path}")
             products_df.write.format("delta").mode("overwrite").save(validated_products_path)
 
-        return {"status": "success"}
+        return {"status": "success", "processing_date": order_date}
 
     except DataValidationError as e:
         logger.error(f"Validation failed: {str(e)}")
@@ -109,5 +111,6 @@ def main():
 
 if __name__ == "__main__":
     result = main()
+    print(json.dumps(result))  # Required for Step Function to capture ECS stdout
     if result['status'] != 'success':
         exit(1)
