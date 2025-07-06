@@ -48,7 +48,14 @@
                 {
                     "name": "MASTER",
                     "value": "local[*]"
-                }
+                },{
+  "name": "CATEGORY_KPI_TABLE",
+  "value": "category_table"
+},
+{
+  "name": "ORDER_KPI_TABLE",
+  "value": "corder_table"
+}
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
