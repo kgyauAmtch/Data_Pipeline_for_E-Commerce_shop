@@ -27,16 +27,20 @@
                 },
                 {
                     "name": "ORDERS_PATH",
-                    "value": "s3://lab6-bucket-ecs/validated/orders/orders_part1.csv"
+                    "value": "s3://lab6-bucket-ecs/validated/orders/"
                 },
                 {
                     "name": "ORDER_ITEMS_PATH",
-                    "value": "s3://lab6-bucket-ecs/validated/order_items/order_items_part1.csv"
+                    "value": "s3://lab6-bucket-ecs/validated/order_items/"
                 },
                 {
                     "name": "PRODUCTS_PATH",
-                    "value": "s3://lab6-bucket-ecs/validated/products/products.csv"
+                    "value": "s3://lab6-bucket-ecs/validated/products/"
                 },
+                {
+                      "name": "PROCESSING_DATE",
+                      "value": "2025-07-06"
+                    },
                 {
                     "name": "AWS_DEFAULT_REGION",
                     "value": "eu-north-1"
