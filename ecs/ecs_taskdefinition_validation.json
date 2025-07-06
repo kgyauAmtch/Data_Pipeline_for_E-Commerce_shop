@@ -26,11 +26,11 @@
                 },
                 {
                     "name": "ORDERS_PATH",
-                    "value": "s3://lab6-bucket-ecs/raw/orders/orders_part2.csv"
+                    "value": "s3://lab6-bucket-ecs/raw/orders/orders_part1.csv"
                 },
                 {
                     "name": "ORDER_ITEMS_PATH",
-                    "value": "s3://lab6-bucket-ecs/raw/order_items/order_items_part2.csv"
+                    "value": "s3://lab6-bucket-ecs/raw/order_items/order_items_part1.csv"
                 },
                 {
                     "name": "PRODUCTS_PATH",

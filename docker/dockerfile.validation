@@ -32,7 +32,7 @@ RUN wget -q https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-$
 RUN pip install --no-cache-dir delta-spark==2.4.0
 
 # Download Delta Lake JARs (adjust version as needed)
-ENV DELTA_VERSION=2.4.0
+ENV DELTA_VERSION=2.3.0
 
 RUN wget -q https://repo1.maven.org/maven2/io/delta/delta-core_2.12/${DELTA_VERSION}/delta-core_2.12-${DELTA_VERSION}.jar -P $SPARK_HOME/jars/ && \
     wget -q https://repo1.maven.org/maven2/io/delta/delta-storage/${DELTA_VERSION}/delta-storage-${DELTA_VERSION}.jar -P $SPARK_HOME/jars/

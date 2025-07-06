@@ -1,4 +1,4 @@
 pyspark==3.4.1
 boto3
 pandas
-delta-spark==2.4.0
+delta-spark==2.3.0
