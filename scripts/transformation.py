@@ -59,19 +59,17 @@ def ensure_tables_exist():
 
 def read_delta_table_if_exists(base_path, processing_date):
     """
-    Reads a Delta table partitioned by dt=processing_date if it exists, else returns None.
+    Reads a Delta table filtered by partition if it exists, else returns None.
     """
-    path = f"{base_path}/dt={processing_date}"
     try:
-        dt = DeltaTable.forPath(spark, path)
-        df = dt.toDF()
-        logger.info(f"Read Delta table from {path}")
+        df = spark.read.format("delta").load(base_path).where(col("dt") == processing_date)
+        logger.info(f"Read Delta table from {base_path} with dt={processing_date}")
         return df
     except AnalysisException:
-        logger.warning(f"Delta table partition not found at {path}")
+        logger.warning(f"Delta table not found at {base_path} with dt={processing_date}")
         return None
     except Exception as e:
-        logger.error(f"Error reading Delta table at {path}: {e}")
+        logger.error(f"Error reading Delta table at {base_path}: {e}")
         return None
 
 def read_delta_table(base_path):
