@@ -20,7 +20,13 @@ VALIDATED_ORDER_ITEMS_PATH = os.environ.get('VALIDATED_ORDER_ITEMS_PATH')
 VALIDATED_PRODUCTS_PATH = os.environ.get('VALIDATED_PRODUCTS_PATH')
 
 # Initialize Spark session
-spark = SparkSession.builder.appName("Transformationjob").getOrCreate()
+spark = SparkSession.builder.appName("Transformationjob") \
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain") \
+    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+    .config("spark.hadoop.fs.s3a.connection.timeout", "60000") \
+    .config("spark.hadoop.fs.s3a.endpoint", "s3.eu-north-1.amazonaws.com") \
+    .getOrCreate().getOrCreate()
 
 # Initialize DynamoDB with explicit region for ECS
 AWS_REGION = os.environ.get('AWS_REGION', 'eu-north-1')

@@ -1,13 +1,9 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, isnan, isnull
+from pyspark.sql.functions import col, isnan, isnull, lit
+from delta.tables import DeltaTable
+from delta import configure_spark_with_delta_pip
 import os
 import logging
-from datetime import datetime
-
-print("=== ENVIRONMENT VARIABLES DEBUG ===")
-for key, val in os.environ.items():
-    print(f"{key} = {val}")
-print("===================================")
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,32 +13,41 @@ logger = logging.getLogger(__name__)
 S3_BUCKET = os.environ['S3_BUCKET_NAME']
 ORDERS_PATH = os.environ['ORDERS_PATH']
 ORDER_ITEMS_PATH = os.environ['ORDER_ITEMS_PATH']
-PRODUCTS_PATH = os.environ.get('PRODUCTS_PATH')  # optional
+PRODUCTS_PATH = os.environ.get('PRODUCTS_PATH')  
 
-# Initialize Spark session
-spark = SparkSession.builder \
-    .appName("ValidationJob") \
+# Initialize Spark session with Delta support
+builder = SparkSession.builder.appName("ValidationJob") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
     .config("spark.hadoop.fs.s3a.aws.credentials.provider", "com.amazonaws.auth.DefaultAWSCredentialsProviderChain") \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .config("spark.hadoop.fs.s3a.connection.timeout", "60000") \
     .config("spark.hadoop.fs.s3a.endpoint", "s3.eu-north-1.amazonaws.com") \
-    .getOrCreate()
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
 class DataValidationError(Exception):
     def __init__(self, message, error_type=None):
         super().__init__(message)
         self.error_type = error_type
 
-def read_csv(path):
-    # Convert s3:// to s3a:// if needed
+def read_delta_or_csv(path):
+    # Convert s3:// to s3a://
     if path.startswith('s3://'):
         path = path.replace('s3://', 's3a://')
-    return spark.read.option("header", True).csv(path)
+    try:
+        dt = DeltaTable.forPath(spark, path)
+        logger.info(f"Reading Delta table from {path}")
+        return dt.toDF()
+    except Exception as e:
+        logger.info(f"Path {path} is not a Delta table or not found, reading as CSV. Reason: {e}")
+        return spark.read.option("header", True).csv(path)
 
 def validate_non_nulls(df, columns, file_label):
     for col_name in columns:
-        if df.filter(isnull(col(col_name)) | isnan(col(col_name))).count() > 0:
+        null_count = df.filter(isnull(col(col_name)) | isnan(col(col_name))).count()
+        if null_count > 0:
             raise DataValidationError(f"{file_label} contains nulls in required column: {col_name}", "NULL_VALIDATION_ERROR")
 
 def validate_referential_integrity(orders_df, order_items_df, products_df):
@@ -55,26 +60,26 @@ def validate_referential_integrity(orders_df, order_items_df, products_df):
         if missing_products.count() > 0:
             raise DataValidationError("Order items reference missing products", "REFERENTIAL_ERROR")
 
-def write_validated_file(df, original_path, validated_base, label):
-    filename = os.path.basename(original_path)
+def write_validated_delta(df, validated_base, label):
     order_date = df.select("created_at").first()["created_at"][:10]
-    partition = f"dt={order_date}"
-    validated_path = f"s3a://{S3_BUCKET}/{validated_base}/{partition}/{filename}"
-    logger.info(f"Writing validated {label} to {validated_path}")
-    df.write.mode("overwrite").option("header", True).csv(validated_path)
+    partition_col = "dt"
+    df_with_partition = df.withColumn(partition_col, lit(order_date))
+    validated_path = f"s3a://{S3_BUCKET}/{validated_base}"
+    logger.info(f"Writing validated {label} Delta table to {validated_path} partitioned by {partition_col}={order_date}")
+    df_with_partition.write.format("delta").mode("overwrite").partitionBy(partition_col).save(validated_path)
 
 def main():
     try:
         logger.info("Reading orders from S3...")
-        orders_df = read_csv(ORDERS_PATH)
+        orders_df = read_delta_or_csv(ORDERS_PATH)
 
         logger.info("Reading order_items from S3...")
-        order_items_df = read_csv(ORDER_ITEMS_PATH)
+        order_items_df = read_delta_or_csv(ORDER_ITEMS_PATH)
 
         products_df = None
         if PRODUCTS_PATH:
             logger.info("Reading products from S3...")
-            products_df = read_csv(PRODUCTS_PATH)
+            products_df = read_delta_or_csv(PRODUCTS_PATH)
 
         logger.info("Validating non-null fields...")
         validate_non_nulls(orders_df, ['order_id', 'user_id', 'created_at'], 'Orders')
@@ -85,13 +90,13 @@ def main():
         logger.info("Validating referential integrity...")
         validate_referential_integrity(orders_df, order_items_df, products_df)
 
-        logger.info("Validation successful. Writing validated files to S3...")
-        write_validated_file(orders_df, ORDERS_PATH, "validated/orders", "Orders")
-        write_validated_file(order_items_df, ORDER_ITEMS_PATH, "validated/order_items", "Order Items")
+        logger.info("Validation successful. Writing validated Delta tables to S3...")
+        write_validated_delta(orders_df, "validated/orders", "Orders")
+        write_validated_delta(order_items_df, "validated/order_items", "Order Items")
         if products_df is not None:
-            validated_path = f"s3a://{S3_BUCKET}/validated/products/products.csv"
-            logger.info(f"Writing validated Products to {validated_path}")
-            products_df.write.mode("overwrite").option("header", True).csv(validated_path)
+            validated_products_path = f"s3a://{S3_BUCKET}/validated/products"
+            logger.info(f"Writing validated Products Delta table to {validated_products_path}")
+            products_df.write.format("delta").mode("overwrite").save(validated_products_path)
 
         return {"status": "success"}
 

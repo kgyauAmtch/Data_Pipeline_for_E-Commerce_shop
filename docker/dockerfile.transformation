@@ -1,36 +1,48 @@
-# Use Bitnami Spark as base image
-FROM bitnami/spark:latest
+FROM python:3.9-slim
 
-# Switch to root to install dependencies and download JARs
-USER root
-
-# Set environment variables
+# Set Spark and Hadoop versions
+ENV SPARK_VERSION=3.3.2
+ENV HADOOP_VERSION=3
+ENV HADOOP_AWS_VERSION=3.3.1
+ENV AWS_SDK_VERSION=1.12.406  
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$SPARK_HOME/bin:$JAVA_HOME/bin:$PATH
+ENV PYSPARK_PYTHON=python3
 ENV HOME=/root
 ENV SPARK_LOCAL_IP=127.0.0.1
 
-# Set working directory
-WORKDIR /app
+
+# Install Java and dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget openjdk-17-jre-headless ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# Verify Java installation
+RUN java -version
+
+# Download and install Spark
+RUN wget -q https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
+    tar -xzf spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
+    mv spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} $SPARK_HOME && \
+    rm spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
+
+# Add required Hadoop AWS & AWS SDK JARs
+RUN wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HADOOP_AWS_VERSION}/hadoop-aws-${HADOOP_AWS_VERSION}.jar -P $SPARK_HOME/jars/ && \
+    wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_VERSION}/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar -P $SPARK_HOME/jars/
 
 # Install Python dependencies
 COPY scripts/requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application scripts
+WORKDIR /app
+# Copy your PySpark script
 COPY scripts/transformation.py .
-COPY scripts/helperfunction.py .
+COPY scripts/helperfunction.py . 
 
-# Create JARs directory
-RUN mkdir -p /app/jars
 
-# Download Spark S3 dependencies
-ADD https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar /app/jars/
-ADD https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.406/aws-java-sdk-bundle-1.12.406.jar /app/jars/
+# Default command
+CMD ["python", "transformation.py"]
 
-# Fix permissions so non-root user can read the JARs
-RUN chmod -R a+r /app/jars
-
-# Optional: Switch to non-root user for container execution (Bitnami uses UID 1001)
-USER 1001
-
-# Set default command to run the PySpark script via spark-submit
-CMD ["spark-submit","--jars", "/app/jars/hadoop-aws-3.3.4.jar,/app/jars/aws-java-sdk-bundle-1.12.406.jar","--conf", "spark.driver.extraClassPath=/app/jars/*","--conf", "spark.executor.extraClassPath=/app/jars/*","--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem","--conf", "spark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.DefaultAWSCredentialsProviderChain","transformation.py"]
