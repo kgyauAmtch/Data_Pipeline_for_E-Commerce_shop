@@ -81,16 +81,22 @@ def read_delta_table(base_path):
         return None
 
 def compute_and_store_kpis():
-    # Placeholder for Step Function input or manual override
+       # Placeholder for Step Function input or manual override
     step_input = {
         'execution_id': 'manual_test',
         'processing_date': None
     }
     execution_id = step_input.get('execution_id', 'unknown')
     processing_date_override = step_input.get('processing_date')
+    processing_date = processing_date_override or os.environ.get('PROCESSING_DATE')
 
     logger.info(f"Step Function Execution ID: {execution_id}")
     logger.info(f"Processing Date Override: {processing_date_override}")
+    logger.info(f"Using processing date: {processing_date}")
+
+    if not processing_date:
+        logger.error("Processing date must be provided")
+        raise Exception("Processing date is required")
 
     logger.info(f"AWS Region: {AWS_REGION}")
     logger.info(f"Category KPI Table: {CATEGORY_KPI_TABLE}")
@@ -103,18 +109,7 @@ def compute_and_store_kpis():
     logger.info("Ensuring DynamoDB tables exist...")
     ensure_tables_exist()
     logger.info("DynamoDB tables are ready")
-
-    # Determine processing date
-    processing_date = processing_date_override
-    if not processing_date:
-        # Try to infer date from orders or order_items Delta partitions
-        # List partitions or get from metadata if possible
-        # For simplicity, fail if not provided
-        logger.error("Processing date must be provided")
-        raise Exception("Processing date is required")
-
-    logger.info(f"Processing date: {processing_date}")
-
+    
     # Read validated Delta tables partitioned by date
     orders_df = read_delta_table_if_exists(VALIDATED_ORDERS_PATH, processing_date)
     order_items_df = read_delta_table_if_exists(VALIDATED_ORDER_ITEMS_PATH, processing_date)
