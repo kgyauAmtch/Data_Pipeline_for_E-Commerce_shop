@@ -15,9 +15,10 @@ ENV SPARK_LOCAL_IP=127.0.0.1
 
 # Install Java and dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wget openjdk-11-jdk ca-certificates && \
+    apt-get install -y --no-install-recommends wget openjdk-11-jre-headless ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
 
 # Verify Java installation
 RUN java -version
