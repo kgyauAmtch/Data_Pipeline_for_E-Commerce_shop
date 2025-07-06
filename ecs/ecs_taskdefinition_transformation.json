@@ -39,7 +39,7 @@
                 },
                 {
                       "name": "PROCESSING_DATE",
-                      "value": "2025-07-06"
+                      "value": "2025-03-30"
                     },
                 {
                     "name": "AWS_DEFAULT_REGION",
@@ -54,7 +54,7 @@
 },
 {
   "name": "ORDER_KPI_TABLE",
-  "value": "corder_table"
+  "value": "order_table"
 }
       ],
       "logConfiguration": {
