@@ -2,6 +2,7 @@ import boto3
 import os
 import logging
 from botocore.exceptions import ClientError
+from decimal import Decimal
 
 # Logging setup
 logger = logging.getLogger(__name__)
@@ -37,6 +38,17 @@ def create_table_if_not_exists(table_name, key_schema, attribute_definitions):
 def clean_item_for_dynamodb(item):
     """Remove None values from item before writing to DynamoDB"""
     return {k: v for k, v in item.items() if v is not None}
+
+def convert_floats_to_decimals(obj):
+    """Recursively convert float values to Decimal for DynamoDB compatibility"""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: convert_floats_to_decimals(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_floats_to_decimals(i) for i in obj]
+    else:
+        return obj
 
 def upsert_category_kpi_batch(partition_iterator, processing_date):
     dynamodb = boto3.resource('dynamodb', region_name=os.environ.get('AWS_REGION', 'eu-north-1'))
@@ -89,6 +101,7 @@ def upsert_category_kpi_batch(partition_iterator, processing_date):
                         merged_item["data_sources"].append(source)
 
                 clean_item = clean_item_for_dynamodb(merged_item)
+                clean_item = convert_floats_to_decimals(clean_item)  # Convert floats to Decimal here
                 batch.put_item(Item=clean_item)
 
             except Exception as e:
@@ -188,6 +201,7 @@ def upsert_order_kpi_batch(partition_iterator, processing_date, data_source):
                             merged_item["data_sources"].append(source)
 
                 clean_item = clean_item_for_dynamodb(merged_item)
+                clean_item = convert_floats_to_decimals(clean_item)  # Convert floats to Decimal here
                 batch.put_item(Item=clean_item)
 
             except Exception as e:
