@@ -36,6 +36,11 @@
                     "name": "PRODUCTS_PATH",
                     "value": "s3://lab6-bucket-ecs/raw/products/products.csv"
                 },
+                              {
+                  "name": "PROCESSING_RESULT_S3_KEY",
+                  "value": "validation_output/result.json"
+                },
+
                 {
                     "name": "AWS_DEFAULT_REGION",
                     "value": "eu-north-1"
