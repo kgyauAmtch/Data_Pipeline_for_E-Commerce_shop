@@ -171,11 +171,37 @@ def start_step_function(group_key):
         FilterExpression=boto3.dynamodb.conditions.Attr('processed_flag').eq(False)
     )
     items = response.get('Items', [])
+
+    # Initialize paths
+    orders_path = None
+    order_items_path = None
+    products_path = None
+
+    # Extract paths from current parts
+    for item in items:
+        data_type_part = item['data_type_part']
+        s3_path = item['s3_path']
+
+        if data_type_part.startswith('orders#'):
+            orders_path = s3_path
+        elif data_type_part.startswith('order_items#'):
+            order_items_path = s3_path
+        elif data_type_part.startswith('products#'):
+            products_path = s3_path
+
+    # Construct the flattened input_payload
     input_payload = {
         "group_key": group_key,
-        "parts_to_process": {item['data_type_part']: item['s3_path'] for item in items},
         "trigger_source": "file_arrival_lambda"
     }
+
+    if orders_path:
+        input_payload["orders_path"] = orders_path
+    if order_items_path:
+        input_payload["order_items_path"] = order_items_path
+    if products_path:
+        input_payload["products_path"] = products_path
+
     logger.info(f"Step Function input payload: {json.dumps(input_payload)}")
 
     try:
@@ -186,6 +212,7 @@ def start_step_function(group_key):
         logger.info(f"Started Step Function for group_key={group_key}, executionArn={resp['executionArn']}")
     except Exception as e:
         logger.error(f"Failed to start Step Function for group_key={group_key}: {e}")
+
 
 def mark_all_parts_processing_started(group_key):
     response = table.query(
