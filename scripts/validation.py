@@ -90,7 +90,7 @@ def write_processing_result_to_s3(result_dict):
     try:
         json_str = json.dumps(result_dict)
         s3_client.put_object(Bucket=S3_BUCKET, Key=PROCESSING_RESULT_S3_KEY, Body=json_str, ContentType='application/json')
-        logger.info(f"Processing result written to s3://{S3_BUCKET}/{PROCESSING_RESULT_S3_KEY}")
+        logger.info(f"Processing result written to the s3://{S3_BUCKET}/{PROCESSING_RESULT_S3_KEY}")
     except Exception as e:
         logger.error(f"Failed to write processing result to S3: {e}")
         raise
@@ -150,3 +150,4 @@ if __name__ == "__main__":
     print(json.dumps(result))  # Required for Step Function to capture ECS stdout
     if result['status'] != 'success':
         exit(1)
+
