@@ -3,7 +3,7 @@ import os
 import json
 import logging
 from urllib.parse import unquote_plus
-from datetime import datetime, timedelta
+from datetime import datetime
 import csv
 from io import StringIO
 
@@ -34,7 +34,6 @@ def lambda_handler(event, context):
         logger.warning("No records found in event")
         return {"status": "no_records"}
 
-    # Use current UTC date as group_key for all files in this event
     group_key = datetime.utcnow().strftime('%Y-%m-%d')
     logger.info(f"Using ingestion date as group_key: {group_key}")
 
@@ -103,8 +102,6 @@ def parse_filename_info(key):
 
     return data_type, part
 
-
-
 def validate_columns(file_type, headers):
     required_cols = set(REQUIRED_HEADERS.get(file_type, []))
     if not required_cols:
@@ -165,6 +162,30 @@ def ready_to_process(group_key):
     required_data_types_for_processing = {'orders', 'order_items'}
     return required_data_types_for_processing.issubset(data_types_present)
 
+def get_latest_products_path():
+    """
+    Retrieve the latest products file path from DynamoDB.
+    Assumes a special record with group_key='latest_products' and data_type_part='products#1'.
+    Modify this if you store it differently.
+    """
+    try:
+        response = table.get_item(
+            Key={
+                'group_key': 'latest_products',
+                'data_type_part': 'products'
+            }
+        )
+        item = response.get('Item')
+        if item:
+            logger.info(f"Found latest products path: {item['s3_path']}")
+            return item['s3_path']
+        else:
+            logger.warning("No latest products path found in DynamoDB.")
+            return None
+    except Exception as e:
+        logger.error(f"Error fetching latest products path: {e}")
+        return None
+
 def start_step_function(group_key):
     response = table.query(
         KeyConditionExpression=boto3.dynamodb.conditions.Key('group_key').eq(group_key),
@@ -172,12 +193,9 @@ def start_step_function(group_key):
     )
     items = response.get('Items', [])
 
-    # Initialize paths
     orders_path = None
     order_items_path = None
-    products_path = None
 
-    # Extract paths from current parts
     for item in items:
         data_type_part = item['data_type_part']
         s3_path = item['s3_path']
@@ -186,10 +204,10 @@ def start_step_function(group_key):
             orders_path = s3_path
         elif data_type_part.startswith('order_items#'):
             order_items_path = s3_path
-        elif data_type_part.startswith('products#'):
-            products_path = s3_path
 
-    # Construct the flattened input_payload
+    # Always get latest products path from special record
+    products_path = get_latest_products_path()
+
     input_payload = {
         "group_key": group_key,
         "trigger_source": "file_arrival_lambda"
@@ -201,6 +219,8 @@ def start_step_function(group_key):
         input_payload["order_items_path"] = order_items_path
     if products_path:
         input_payload["products_path"] = products_path
+    else:
+        logger.warning("products_path not found; Step Function will start without it.")
 
     logger.info(f"Step Function input payload: {json.dumps(input_payload)}")
 
@@ -212,7 +232,6 @@ def start_step_function(group_key):
         logger.info(f"Started Step Function for group_key={group_key}, executionArn={resp['executionArn']}")
     except Exception as e:
         logger.error(f"Failed to start Step Function for group_key={group_key}: {e}")
-
 
 def mark_all_parts_processing_started(group_key):
     response = table.query(
