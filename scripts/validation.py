@@ -50,15 +50,30 @@ def validate_non_nulls(df, columns, file_label):
         if null_count > 0:
             raise DataValidationError(f"{file_label} contains nulls in required column: {col_name}", "NULL_VALIDATION_ERROR")
 
+
 def validate_referential_integrity(orders_df, order_items_df, products_df):
-    missing_orders = order_items_df.join(orders_df, order_items_df.order_id == orders_df.order_id, "left_anti")
-    if missing_orders.count() > 0:
+    # Collect distinct IDs to driver
+    order_ids = [row['order_id'] for row in orders_df.select("order_id").distinct().collect()]
+    product_ids = [row['id'] for row in products_df.select("id").distinct().collect()] if products_df else []
+
+    # Check for missing orders
+    missing_orders = order_items_df.filter(~col("order_id").isin(order_ids))
+    missing_order_count = missing_orders.count()
+    if missing_order_count > 0:
+        logger.error(f"{missing_order_count} order items reference missing orders:")
+        missing_orders.select("order_id").distinct().show(truncate=False)
         raise DataValidationError("Order items reference missing orders", "REFERENTIAL_ERROR")
 
+    # Check for missing products
     if products_df is not None:
-        missing_products = order_items_df.join(products_df, order_items_df.product_id == products_df.id, "left_anti")
-        if missing_products.count() > 0:
+        missing_products = order_items_df.filter(~col("product_id").isin(product_ids))
+        missing_product_count = missing_products.count()
+        if missing_product_count > 0:
+            logger.error(f"{missing_product_count} order items reference missing products:")
+            missing_products.select("product_id").distinct().show(truncate=False)
             raise DataValidationError("Order items reference missing products", "REFERENTIAL_ERROR")
+
+    logger.info("Referential integrity checks passed.")
 
 def write_validated_delta(df, validated_base, label, partition_value=None):
     partition_col = "dt"
