@@ -1,5 +1,5 @@
 {
-  "Comment": "ECS tasks fro ecommerce",
+  "Comment": "ECS tasks for ecommerce with validation output read from S3",
   "StartAt": "RunECSTask1",
   "States": {
     "RunECSTask1": {
@@ -43,6 +43,10 @@
                   "Value.$": "$.products_path"
                 },
                 {
+                  "Name": "PROCESSING_RESULT_S3_KEY",
+                  "Value": "validation_output/processing_result.json"
+                },
+                {
                   "Name": "AWS_DEFAULT_REGION",
                   "Value": "eu-north-1"
                 },
@@ -63,10 +67,6 @@
           ]
         }
       },
-      "ResultSelector": {
-        "processing_date.$": "$.Output.processing_date"
-      },
-      "ResultPath": "$.validation_result",
       "Retry": [
         {
           "ErrorEquals": [
@@ -85,11 +85,32 @@
           "Next": "SendFailureAlert"
         }
       ],
-      "Next": "WaitBeforeNextTask"
+      "Next": "ReadProcessingResult"
     },
-    "WaitBeforeNextTask": {
-      "Type": "Wait",
-      "Seconds": 30,
+    "ReadProcessingResult": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-north-1:269610886972:function:lab6-tasksvalidation",
+      "ResultPath": "$.processing_result",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "SendFailureAlert"
+        }
+      ],
       "Next": "RunECSTask2"
     },
     "RunECSTask2": {
@@ -102,8 +123,8 @@
         "NetworkConfiguration": {
           "AwsvpcConfiguration": {
             "Subnets": [
-             "subnet-06900e97dc30a2ef6",
-             "subnet-05d5dac0c244cb2ab"
+              "subnet-06900e97dc30a2ef6",
+              "subnet-05d5dac0c244cb2ab"
             ],
             "AssignPublicIp": "DISABLED",
             "SecurityGroups": [
@@ -142,7 +163,7 @@
                 },
                 {
                   "Name": "PROCESSING_DATE",
-                  "Value.$": "$.validation_result.processing_date"
+                  "Value.$": "$.processing_result.processing_date"
                 },
                 {
                   "Name": "AWS_DEFAULT_REGION",
