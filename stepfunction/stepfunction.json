@@ -11,9 +11,14 @@
         "TaskDefinition": "ecommerce-validation-task",
         "NetworkConfiguration": {
           "AwsvpcConfiguration": {
-            "Subnets": ["PrivateSubnet1-lab6", "PrivateSubnet2-lab6"],
+            "Subnets": [
+              "subnet-06900e97dc30a2ef6",
+              "subnet-05d5dac0c244cb2ab"
+            ],
             "AssignPublicIp": "DISABLED",
-            "SecurityGroups": ["sg-09a95ea9f6ce5d57e"]
+            "SecurityGroups": [
+              "sg-09a95ea9f6ce5d57e"
+            ]
           }
         },
         "Overrides": {
@@ -21,14 +26,38 @@
             {
               "Name": "validation-container",
               "Environment": [
-                { "Name": "S3_BUCKET_NAME", "Value": "lab6-bucket-ecs" },
-                { "Name": "ORDERS_PATH", "Value.$": "$.orders_path" },
-                { "Name": "ORDER_ITEMS_PATH", "Value.$": "$.order_items_path" },
-                { "Name": "PRODUCTS_PATH", "Value.$": "$.products_path" },
-                { "Name": "AWS_DEFAULT_REGION", "Value": "eu-north-1" },
-                { "Name": "SPARK_LOCAL_IP", "Value": "127.0.0.1" },
-                { "Name": "HOME", "Value": "/root" },
-                { "Name": "MASTER", "Value": "local[*]" }
+                {
+                  "Name": "S3_BUCKET_NAME",
+                  "Value": "lab6-bucket-ecs"
+                },
+                {
+                  "Name": "ORDERS_PATH",
+                  "Value.$": "$.orders_path"
+                },
+                {
+                  "Name": "ORDER_ITEMS_PATH",
+                  "Value.$": "$.order_items_path"
+                },
+                {
+                  "Name": "PRODUCTS_PATH",
+                  "Value.$": "$.products_path"
+                },
+                {
+                  "Name": "AWS_DEFAULT_REGION",
+                  "Value": "eu-north-1"
+                },
+                {
+                  "Name": "SPARK_LOCAL_IP",
+                  "Value": "127.0.0.1"
+                },
+                {
+                  "Name": "HOME",
+                  "Value": "/root"
+                },
+                {
+                  "Name": "MASTER",
+                  "Value": "local[*]"
+                }
               ]
             }
           ]
@@ -40,7 +69,9 @@
       "ResultPath": "$.validation_result",
       "Retry": [
         {
-          "ErrorEquals": ["States.TaskFailed"],
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
           "IntervalSeconds": 30,
           "MaxAttempts": 3,
           "BackoffRate": 2
@@ -48,19 +79,19 @@
       ],
       "Catch": [
         {
-          "ErrorEquals": ["States.ALL"],
+          "ErrorEquals": [
+            "States.ALL"
+          ],
           "Next": "SendFailureAlert"
         }
       ],
       "Next": "WaitBeforeNextTask"
     },
-
     "WaitBeforeNextTask": {
       "Type": "Wait",
       "Seconds": 30,
       "Next": "RunECSTask2"
     },
-
     "RunECSTask2": {
       "Type": "Task",
       "Resource": "arn:aws:states:::ecs:runTask.sync",
@@ -70,9 +101,14 @@
         "TaskDefinition": "ecommerce-transformation-task",
         "NetworkConfiguration": {
           "AwsvpcConfiguration": {
-            "Subnets": ["PrivateSubnet1-lab6", "PrivateSubnet2-lab6"],
+            "Subnets": [
+             "subnet-06900e97dc30a2ef6",
+             "subnet-05d5dac0c244cb2ab"
+            ],
             "AssignPublicIp": "DISABLED",
-            "SecurityGroups": ["sg-09a95ea9f6ce5d57e"]
+            "SecurityGroups": [
+              "sg-09a95ea9f6ce5d57e"
+            ]
           }
         },
         "Overrides": {
@@ -80,17 +116,50 @@
             {
               "Name": "transformation-container",
               "Environment": [
-                { "Name": "SPARK_LOCAL_IP", "Value": "127.0.0.1" },
-                { "Name": "HOME", "Value": "/root" },
-                { "Name": "S3_BUCKET_NAME", "Value": "lab6-bucket-ecs" },
-                { "Name": "VALIDATED_ORDERS_PATH", "Value": "s3://lab6-bucket-ecs/validated/orders/" },
-                { "Name": "VALIDATED_ORDER_ITEMS_PATH", "Value": "s3://lab6-bucket-ecs/validated/order_items/" },
-                { "Name": "VALIDATED_PRODUCTS_PATH", "Value": "s3://lab6-bucket-ecs/validated/products/" },
-                { "Name": "PROCESSING_DATE", "Value.$": "$.validation_result.processing_date" },
-                { "Name": "AWS_DEFAULT_REGION", "Value": "eu-north-1" },
-                { "Name": "MASTER", "Value": "local[*]" },
-                { "Name": "CATEGORY_KPI_TABLE", "Value": "category_table" },
-                { "Name": "ORDER_KPI_TABLE", "Value": "order_table" }
+                {
+                  "Name": "SPARK_LOCAL_IP",
+                  "Value": "127.0.0.1"
+                },
+                {
+                  "Name": "HOME",
+                  "Value": "/root"
+                },
+                {
+                  "Name": "S3_BUCKET_NAME",
+                  "Value": "lab6-bucket-ecs"
+                },
+                {
+                  "Name": "VALIDATED_ORDERS_PATH",
+                  "Value": "s3://lab6-bucket-ecs/validated/orders/"
+                },
+                {
+                  "Name": "VALIDATED_ORDER_ITEMS_PATH",
+                  "Value": "s3://lab6-bucket-ecs/validated/order_items/"
+                },
+                {
+                  "Name": "VALIDATED_PRODUCTS_PATH",
+                  "Value": "s3://lab6-bucket-ecs/validated/products/"
+                },
+                {
+                  "Name": "PROCESSING_DATE",
+                  "Value.$": "$.validation_result.processing_date"
+                },
+                {
+                  "Name": "AWS_DEFAULT_REGION",
+                  "Value": "eu-north-1"
+                },
+                {
+                  "Name": "MASTER",
+                  "Value": "local[*]"
+                },
+                {
+                  "Name": "CATEGORY_KPI_TABLE",
+                  "Value": "category_table"
+                },
+                {
+                  "Name": "ORDER_KPI_TABLE",
+                  "Value": "order_table"
+                }
               ]
             }
           ]
@@ -98,7 +167,9 @@
       },
       "Retry": [
         {
-          "ErrorEquals": ["States.TaskFailed"],
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
           "IntervalSeconds": 30,
           "MaxAttempts": 3,
           "BackoffRate": 2
@@ -106,13 +177,14 @@
       ],
       "Catch": [
         {
-          "ErrorEquals": ["States.ALL"],
+          "ErrorEquals": [
+            "States.ALL"
+          ],
           "Next": "SendFailureAlert"
         }
       ],
       "End": true
     },
-
     "SendFailureAlert": {
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
