@@ -19,6 +19,7 @@ DDB_TABLE = os.environ['INGESTION_TABLE']
 STEP_FUNCTION_ARN = os.environ['STEP_FUNCTION_ARN']
 SNS_TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
 DEBOUNCE_SECONDS = int(os.environ.get('DEBOUNCE_SECONDS', 120))
+S3_BUCKET = os.environ['S3_BUCKET_NAME']
 
 REQUIRED_HEADERS = {
     'orders': ['order_id', 'user_id', 'status', 'created_at', 'returned_at', 'shipped_at', 'delivered_at', 'num_of_item'],
@@ -165,7 +166,7 @@ def ready_to_process(group_key):
 def get_latest_products_path():
     """
     Retrieve the latest products file path from DynamoDB.
-    Assumes a special record with group_key='latest_products' and data_type_part='products#1'.
+    Assumes a special record with group_key='latest_products' and data_type_part='products'.
     Modify this if you store it differently.
     """
     try:
@@ -208,19 +209,21 @@ def start_step_function(group_key):
     # Always get latest products path from special record
     products_path = get_latest_products_path()
 
+    # Prepend full S3 URI to all paths
+    if orders_path:
+        orders_path = f"s3://{S3_BUCKET}/{orders_path}"
+    if order_items_path:
+        order_items_path = f"s3://{S3_BUCKET}/{order_items_path}"
+    if products_path:
+        products_path = f"s3://{S3_BUCKET}/{products_path}"
+
     input_payload = {
         "group_key": group_key,
-        "trigger_source": "file_arrival_lambda"
+        "trigger_source": "file_arrival_lambda",
+        "orders_path": orders_path or "",
+        "order_items_path": order_items_path or "",
+        "products_path": products_path or ""
     }
-
-    if orders_path:
-        input_payload["orders_path"] = orders_path
-    if order_items_path:
-        input_payload["order_items_path"] = order_items_path
-    if products_path:
-        input_payload["products_path"] = products_path
-    else:
-        logger.warning("products_path not found; Step Function will start without it.")
 
     logger.info(f"Step Function input payload: {json.dumps(input_payload)}")
 
