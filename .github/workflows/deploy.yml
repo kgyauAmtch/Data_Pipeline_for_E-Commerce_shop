@@ -26,6 +26,10 @@ jobs:
           - name: lab6-ttl
             handler: ttl_lambda.lambda_handler
           - name: lab6-tasksvalidation
+            handler: lab6_tasksvalidation.lambda_handler
+          - name: controller
+            handler: controller.lambda_handler
+          - name: confirm_status
             handler: lambda_function.lambda_handler
 
     steps:

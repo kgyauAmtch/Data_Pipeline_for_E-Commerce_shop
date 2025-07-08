@@ -1,5 +1,5 @@
 {
-  "Comment": "ECS tasks for ecommerce with validation output read from S3",
+  "Comment": "ECS tasks with batch chunk status update, no S3 archive",
   "StartAt": "RunECSTask1",
   "States": {
     "RunECSTask1": {
@@ -67,6 +67,7 @@
           ]
         }
       },
+      "ResultPath": "$.ecsTask1Result",
       "Retry": [
         {
           "ErrorEquals": [
@@ -82,12 +83,12 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "SendFailureAlert"
+          "Next": "UpdateBatchChunkStatusFailed"
         }
       ],
-      "Next": "ReadProcessingResult"
+      "Next": "pass_result"
     },
-    "ReadProcessingResult": {
+    "pass_result": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:eu-north-1:269610886972:function:lab6-tasksvalidation",
       "ResultPath": "$.processing_result",
@@ -108,7 +109,7 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "SendFailureAlert"
+          "Next": "UpdateBatchChunkStatusFailed"
         }
       ],
       "Next": "Wait"
@@ -191,6 +192,7 @@
           ]
         }
       },
+      "ResultPath": "$.ecsTask2Result",
       "Retry": [
         {
           "ErrorEquals": [
@@ -206,10 +208,30 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "SendFailureAlert"
+          "Next": "UpdateBatchChunkStatusFailed"
         }
       ],
+      "Next": "UpdateBatchChunkStatusDone"
+    },
+    "UpdateBatchChunkStatusDone": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-north-1:269610886972:function:confirm_status",
+      "Parameters": {
+        "batch_id.$": "$.batch_id",
+        "group_key.$": "$.group_key",
+        "status": "done"
+      },
       "End": true
+    },
+    "UpdateBatchChunkStatusFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-north-1:269610886972:function:confirm_status",
+      "Parameters": {
+        "batch_id.$": "$.batch_id",
+        "group_key.$": "$.group_key",
+        "status": "failed"
+      },
+      "Next": "SendFailureAlert"
     },
     "SendFailureAlert": {
       "Type": "Task",
