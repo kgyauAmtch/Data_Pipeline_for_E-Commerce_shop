@@ -6,6 +6,8 @@ import os
 import logging
 import json
 import boto3
+from functools import reduce
+from pyspark.sql import DataFrame
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -13,11 +15,10 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 S3_BUCKET = os.environ['S3_BUCKET_NAME']
-ORDERS_PATH = os.environ['ORDERS_PATH']
-ORDER_ITEMS_PATH = os.environ['ORDER_ITEMS_PATH']
-PRODUCTS_PATH = os.environ.get('PRODUCTS_PATH')  
+ORDERS_PATHS_JSON = os.environ.get('ORDERS_PATHS', '[]')
+ORDER_ITEMS_PATHS_JSON = os.environ.get('ORDER_ITEMS_PATHS', '[]')
+PRODUCTS_PATH = os.environ.get('PRODUCTS_PATH')  # optional single path
 
-# Output path for processing result JSON
 PROCESSING_RESULT_S3_KEY = os.environ.get('PROCESSING_RESULT_S3_KEY', 'validation_output/result.json')
 
 # Initialize Spark session with Delta support
@@ -50,6 +51,17 @@ def read_delta_or_csv(path):
     except Exception as e:
         logger.info(f"Path {path} is not a Delta table or not found, reading as CSV. Reason: {e}")
         return spark.read.option("header", True).csv(path)
+
+def read_and_union(paths):
+    dfs = []
+    for path in paths:
+        logger.info(f"Reading data from path: {path}")
+        df = read_delta_or_csv(path)
+        dfs.append(df)
+    if dfs:
+        return reduce(DataFrame.unionByName, dfs)
+    else:
+        return None
 
 def validate_non_nulls(df, columns, file_label):
     for col_name in columns:
@@ -90,22 +102,35 @@ def write_processing_result_to_s3(result_dict):
     try:
         json_str = json.dumps(result_dict)
         s3_client.put_object(Bucket=S3_BUCKET, Key=PROCESSING_RESULT_S3_KEY, Body=json_str, ContentType='application/json')
-        logger.info(f"Processing result written to the s3://{S3_BUCKET}/{PROCESSING_RESULT_S3_KEY}")
+        logger.info(f"Processing result written to s3://{S3_BUCKET}/{PROCESSING_RESULT_S3_KEY}")
     except Exception as e:
         logger.error(f"Failed to write processing result to S3: {e}")
         raise
 
 def main():
     try:
-        logger.info("Reading orders from S3...")
-        orders_df = read_delta_or_csv(ORDERS_PATH)
+        # Parse JSON arrays from environment variables
+        orders_paths = json.loads(ORDERS_PATHS_JSON)
+        order_items_paths = json.loads(ORDER_ITEMS_PATHS_JSON)
 
-        logger.info("Reading order_items from S3...")
-        order_items_df = read_delta_or_csv(ORDER_ITEMS_PATH)
+        if not orders_paths:
+            raise Exception("No orders paths provided.")
+        if not order_items_paths:
+            raise Exception("No order_items paths provided.")
+
+        logger.info("Reading and unioning orders data...")
+        orders_df = read_and_union(orders_paths)
+        if orders_df is None:
+            raise Exception("Failed to read orders data.")
+
+        logger.info("Reading and unioning order_items data...")
+        order_items_df = read_and_union(order_items_paths)
+        if order_items_df is None:
+            raise Exception("Failed to read order_items data.")
 
         products_df = None
         if PRODUCTS_PATH:
-            logger.info("Reading products from S3...")
+            logger.info("Reading products data...")
             products_df = read_delta_or_csv(PRODUCTS_PATH)
 
         logger.info("Validating non-null fields...")
@@ -147,7 +172,6 @@ def main():
 
 if __name__ == "__main__":
     result = main()
-    print(json.dumps(result))  # Required for Step Function to capture ECS stdout
+    print(json.dumps(result))  # For Step Function capture
     if result['status'] != 'success':
         exit(1)
-

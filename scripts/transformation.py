@@ -6,6 +6,9 @@ import boto3
 import os
 import logging
 import sys
+import json
+from functools import reduce
+from pyspark.sql import DataFrame
 from helperfunction import create_table_if_not_exists, upsert_category_kpi_batch, upsert_order_kpi_batch
 
 # Logging setup
@@ -22,10 +25,17 @@ def convert_s3_to_s3a(path):
 # Environment variables with s3a:// conversion
 CATEGORY_KPI_TABLE = os.environ['CATEGORY_KPI_TABLE']
 ORDER_KPI_TABLE = os.environ['ORDER_KPI_TABLE']
-VALIDATED_ORDERS_PATH = convert_s3_to_s3a(os.environ.get('VALIDATED_ORDERS_PATH'))
-VALIDATED_ORDER_ITEMS_PATH = convert_s3_to_s3a(os.environ.get('VALIDATED_ORDER_ITEMS_PATH'))
+
+# Expect JSON arrays for multiple paths
+VALIDATED_ORDERS_PATHS_JSON = os.environ.get('VALIDATED_ORDERS_PATHS', '[]')
+VALIDATED_ORDER_ITEMS_PATHS_JSON = os.environ.get('VALIDATED_ORDER_ITEMS_PATHS', '[]')
 VALIDATED_PRODUCTS_PATH = convert_s3_to_s3a(os.environ.get('VALIDATED_PRODUCTS_PATH'))
+
 AWS_REGION = os.environ.get('AWS_REGION', 'eu-north-1')
+
+# Parse JSON arrays and convert paths
+VALIDATED_ORDERS_PATHS = [convert_s3_to_s3a(p) for p in json.loads(VALIDATED_ORDERS_PATHS_JSON)]
+VALIDATED_ORDER_ITEMS_PATHS = [convert_s3_to_s3a(p) for p in json.loads(VALIDATED_ORDER_ITEMS_PATHS_JSON)]
 
 # Initialize Spark session with Delta support
 spark = SparkSession.builder.appName("Transformationjob") \
@@ -57,25 +67,27 @@ def ensure_tables_exist():
     create_table_if_not_exists(CATEGORY_KPI_TABLE, category_key_schema, category_attribute_definitions)
     create_table_if_not_exists(ORDER_KPI_TABLE, order_key_schema, order_attribute_definitions)
 
-def read_delta_table_if_exists(base_path, processing_date):
-    """
-    Reads a Delta table filtered by partition if it exists, else returns None.
-    """
+def read_delta_or_csv(path):
     try:
-        df = spark.read.format("delta").load(base_path).where(col("dt") == processing_date)
-        logger.info(f"Read Delta table from {base_path} with dt={processing_date}")
-        return df
-    except AnalysisException:
-        logger.warning(f"Delta table not found at {base_path} with dt={processing_date}")
-        return None
-    except Exception as e:
-        logger.error(f"Error reading Delta table at {base_path}: {e}")
+        dt = DeltaTable.forPath(spark, path)
+        logger.info(f"Reading Delta table from {path}")
+        return dt.toDF()
+    except Exception:
+        logger.info(f"Path {path} is not a Delta table or not found, reading as CSV")
+        return spark.read.option("header", True).csv(path)
+
+def read_and_union(paths):
+    dfs = []
+    for path in paths:
+        logger.info(f"Reading data from path: {path}")
+        df = read_delta_or_csv(path)
+        dfs.append(df)
+    if dfs:
+        return reduce(DataFrame.unionByName, dfs)
+    else:
         return None
 
 def read_delta_table(base_path):
-    """
-    Reads a Delta table fully (for unpartitioned tables like products).
-    """
     try:
         dt = DeltaTable.forPath(spark, base_path)
         df = dt.toDF()
@@ -106,19 +118,19 @@ def compute_and_store_kpis():
     logger.info(f"AWS Region: {AWS_REGION}")
     logger.info(f"Category KPI Table: {CATEGORY_KPI_TABLE}")
     logger.info(f"Order KPI Table: {ORDER_KPI_TABLE}")
-    logger.info(f"Orders Path: {VALIDATED_ORDERS_PATH}")
-    logger.info(f"Order Items Path: {VALIDATED_ORDER_ITEMS_PATH}")
+    logger.info(f"Orders Paths: {VALIDATED_ORDERS_PATHS}")
+    logger.info(f"Order Items Paths: {VALIDATED_ORDER_ITEMS_PATHS}")
     logger.info(f"Products Path: {VALIDATED_PRODUCTS_PATH}")
 
     # Ensure DynamoDB tables exist
     logger.info("Ensuring DynamoDB tables exist...")
     ensure_tables_exist()
     logger.info("DynamoDB tables are ready")
-    
-    # Read validated Delta tables partitioned by date
-    orders_df = read_delta_table_if_exists(VALIDATED_ORDERS_PATH, processing_date)
-    order_items_df = read_delta_table_if_exists(VALIDATED_ORDER_ITEMS_PATH, processing_date)
-    products_df = read_delta_table(VALIDATED_PRODUCTS_PATH)  # products usually unpartitioned
+
+    # Read and union validated Delta tables partitioned by date
+    orders_df = read_and_union(VALIDATED_ORDERS_PATHS)
+    order_items_df = read_and_union(VALIDATED_ORDER_ITEMS_PATHS)
+    products_df = read_delta_table(VALIDATED_PRODUCTS_PATH) if VALIDATED_PRODUCTS_PATH else None
 
     if products_df is None:
         logger.error("Products Delta table not found or empty - required for KPI computation")

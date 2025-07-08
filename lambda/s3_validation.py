@@ -30,62 +30,91 @@ REQUIRED_HEADERS = {
 table = dynamodb.Table(DDB_TABLE)
 
 def lambda_handler(event, context):
-    records = event.get('Records', [])
-    if not records:
-        logger.warning("No records found in event")
-        return {"status": "no_records"}
+    orders_paths = event.get('orders_paths', [])
+    order_items_paths = event.get('order_items_paths', [])
+    products_path = event.get('products_path', '')
 
-    group_key = datetime.utcnow().strftime('%Y-%m-%d')
-    logger.info(f"Using ingestion date as group_key: {group_key}")
+    # Normalize single string inputs to lists
+    if isinstance(orders_paths, str):
+        orders_paths = [orders_paths]
+    if isinstance(order_items_paths, str):
+        order_items_paths = [order_items_paths]
 
-    for record in records:
-        bucket = record['s3']['bucket']['name']
-        key = unquote_plus(record['s3']['object']['key'])
-        logger.info(f"Processing file s3://{bucket}/{key}")
+    errors = []
 
+    # Validate orders files
+    for orders_s3_key in orders_paths:
         try:
-            file_type, part = parse_filename_info(key)
-            if not all([file_type, part]):
-                raise Exception(f"File {key} does not conform to naming conventions (e.g., orders_part1.csv).")
-
-            obj = s3.get_object(Bucket=bucket, Key=key)
-            csv_content = StringIO(obj['Body'].read().decode('utf-8'))
-            reader = csv.reader(csv_content)
-            headers = next(reader, None)
-
-            if headers is None:
-                raise Exception("File has no header row")
-
-            validate_columns(file_type, headers)
-            logger.info(f"Column validation passed for {key}")
-
-            now_ts = int(datetime.utcnow().timestamp())
-            debounce_ttl = now_ts + DEBOUNCE_SECONDS
-
-            table.put_item(
-                Item={
-                    'group_key': group_key,
-                    'data_type_part': f"{file_type}#{part}",
-                    's3_path': key,
-                    'arrival_timestamp': now_ts,
-                    'processed_flag': False,
-                    'debounce_ttl': debounce_ttl
-                }
-            )
-            logger.info(f"Updated DynamoDB for group_key={group_key}, data_type={file_type}, part={part}")
-
-            if ready_to_process(group_key):
-                start_step_function(group_key)
-                mark_all_parts_processing_started(group_key)
-            else:
-                logger.info(f"Waiting for more parts for group_key={group_key}, debounce TTL set.")
-
+            validate_file(orders_s3_key, 'orders')
         except Exception as e:
-            logger.error(f"Processing failed for file {key}: {e}")
-            handle_invalid_file(bucket, key, file_type, reason=str(e))
-            send_sns_alert(bucket, key, file_type, str(e))
+            error_msg = f"Orders file {orders_s3_key}: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
 
-    return {"status": "processed"}
+    # Validate order_items files
+    for order_items_s3_key in order_items_paths:
+        try:
+            validate_file(order_items_s3_key, 'order_items')
+        except Exception as e:
+            error_msg = f"Order items file {order_items_s3_key}: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+    # Validate products file (single)
+    if products_path:
+        try:
+            validate_file(products_path, 'products')
+        except Exception as e:
+            error_msg = f"Products file {products_path}: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+    if errors:
+        logger.error(f"Validation completed with errors: {errors}")
+        # Optionally, raise an exception to fail the Lambda and Step Function
+        # raise Exception("Validation failed for one or more files.")
+        return {
+            "status": "failed",
+            "errors": errors
+        }
+
+    logger.info("All files validated successfully.")
+    return {
+        "status": "success",
+        "validated_orders_files": orders_paths,
+        "validated_order_items_files": order_items_paths,
+        "validated_products_file": products_path
+    }
+
+def validate_file(s3_key, file_type):
+    bucket = S3_BUCKET
+    logger.info(f"Validating {file_type} file: {s3_key}")
+
+    try:
+        prefix = f"s3://{bucket}/"
+        if s3_key.startswith(prefix):
+            key = s3_key[len(prefix):]
+        else:
+            key = s3_key
+
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        csv_content = StringIO(obj['Body'].read().decode('utf-8'))
+        reader = csv.reader(csv_content)
+        headers = next(reader, None)
+
+        if headers is None:
+            raise Exception("File has no header row")
+
+        validate_columns(file_type, headers)
+        logger.info(f"Column validation passed for {s3_key}")
+
+        # Additional validation logic can be added here
+
+    except Exception as e:
+        logger.error(f"Validation failed for {s3_key}: {e}")
+        handle_invalid_file(bucket, key, file_type, reason=str(e))
+        send_sns_alert(bucket, key, file_type, str(e))
+        raise  # Re-raise to be caught in lambda_handler
 
 def parse_filename_info(key):
     filename = key.split('/')[-1]
@@ -164,11 +193,6 @@ def ready_to_process(group_key):
     return required_data_types_for_processing.issubset(data_types_present)
 
 def get_latest_products_path():
-    """
-    Retrieve the latest products file path from DynamoDB.
-    Assumes a special record with group_key='latest_products' and data_type_part='products'.
-    Modify this if you store it differently.
-    """
     try:
         response = table.get_item(
             Key={
@@ -194,34 +218,27 @@ def start_step_function(group_key):
     )
     items = response.get('Items', [])
 
-    orders_path = None
-    order_items_path = None
+    orders_paths = []
+    order_items_paths = []
 
     for item in items:
         data_type_part = item['data_type_part']
         s3_path = item['s3_path']
 
         if data_type_part.startswith('orders#'):
-            orders_path = s3_path
+            orders_paths.append(f"s3://{S3_BUCKET}/{s3_path}")
         elif data_type_part.startswith('order_items#'):
-            order_items_path = s3_path
+            order_items_paths.append(f"s3://{S3_BUCKET}/{s3_path}")
 
-    # Always get latest products path from special record
     products_path = get_latest_products_path()
-
-    # Prepend full S3 URI to all paths
-    if orders_path:
-        orders_path = f"s3://{S3_BUCKET}/{orders_path}"
-    if order_items_path:
-        order_items_path = f"s3://{S3_BUCKET}/{order_items_path}"
     if products_path:
         products_path = f"s3://{S3_BUCKET}/{products_path}"
 
     input_payload = {
         "group_key": group_key,
         "trigger_source": "file_arrival_lambda",
-        "orders_path": orders_path or "",
-        "order_items_path": order_items_path or "",
+        "orders_paths": orders_paths,
+        "order_items_paths": order_items_paths,
         "products_path": products_path or ""
     }
 

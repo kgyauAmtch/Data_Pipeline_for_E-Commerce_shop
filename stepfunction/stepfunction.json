@@ -31,12 +31,12 @@
                   "Value": "lab6-bucket-ecs"
                 },
                 {
-                  "Name": "ORDERS_PATH",
-                  "Value.$": "$.orders_path"
+                  "Name": "ORDERS_PATHS",
+                  "Value.$": "States.JsonToString($.orders_paths)"
                 },
                 {
-                  "Name": "ORDER_ITEMS_PATH",
-                  "Value.$": "$.order_items_path"
+                  "Name": "ORDER_ITEMS_PATHS",
+                  "Value.$": "States.JsonToString($.order_items_paths)"
                 },
                 {
                   "Name": "PRODUCTS_PATH",
@@ -111,6 +111,11 @@
           "Next": "SendFailureAlert"
         }
       ],
+      "Next": "Wait"
+    },
+    "Wait": {
+      "Type": "Wait",
+      "Seconds": 30,
       "Next": "RunECSTask2"
     },
     "RunECSTask2": {
