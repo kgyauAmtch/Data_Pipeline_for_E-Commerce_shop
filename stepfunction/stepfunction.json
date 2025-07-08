@@ -44,7 +44,7 @@
                 },
                 {
                   "Name": "PROCESSING_RESULT_S3_KEY",
-                  "Value": "validation_output/processing_result.json"
+                  "Value": "validation_output/result.json"
                 },
                 {
                   "Name": "AWS_DEFAULT_REGION",
