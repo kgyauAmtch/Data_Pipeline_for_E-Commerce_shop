@@ -52,6 +52,29 @@ This table stores batch chunks created after debounce logic expires, representin
 | `execution_arn` | String | — | ARN of the Step Functions execution started for this batch chunk (populated when processing starts). |
 | `processing_started_at` | Number | — | Epoch timestamp when processing started (optional). |
 
+
+
+## 1. Orders Table
+
+| Attribute | Role | Reason |
+| :-- | :-- | :-- |
+| **Partition Key:** `order_id` | Partition Key | Uniquely identifies each order. Using `order_id` as partition key allows fast lookups. |
+| **Sort Key:** *(optional)* `user_id` or `created_at` | Sort Key | Optional, depending on query patterns: <br> - Use `user_id` if you want to query orders by user.<br> - Use `created_at` to sort orders by date for a given `order_id` (less common). |
+
+### Typical usage:
+
+- If you mostly access orders by `order_id`, just use `order_id` as the partition key and no sort key.
+- If you want to query all orders for a user, consider a **Global Secondary Index (GSI)** with `user_id` as partition key and `created_at` as sort key.
+
+
+## 2. Category Table
+
+| Attribute | Role | Reason |
+| :-- | :-- | :-- |
+| **Partition Key:** `category_id` | Partition Key | Unique identifier for each category. |
+| **Sort Key:** *(optional)* `subcategory_id` or `name` | Sort Key | Optional, if you have hierarchical categories or want to sort categories by name or subcategory. |
+
+
 **Additional Notes:**
 
 - **DynamoDB Streams:** Enable Streams with **"New image"** view type on this table to trigger Lambda functions immediately when new batch chunks are created or updated.
@@ -59,6 +82,7 @@ This table stores batch chunks created after debounce logic expires, representin
 
 
 ## Summary Table Comparison
+
 
 | Feature | Ingestion / Events Table | Batch Chunks Table |
 | :-- | :-- | :-- |
