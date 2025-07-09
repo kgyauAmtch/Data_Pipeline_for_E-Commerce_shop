@@ -59,7 +59,7 @@ This table stores batch chunks created after debounce logic expires, representin
 | Attribute | Role | Reason |
 | :-- | :-- | :-- |
 | **Partition Key:** `order_id` | Partition Key | Uniquely identifies each order. Using `order_id` as partition key allows fast lookups. |
-| **Sort Key:** *(optional)* `user_id` or `created_at` | Sort Key | Optional, depending on query patterns: <br> - Use `user_id` if you want to query orders by user.<br> - Use `created_at` to sort orders by date for a given `order_id` (less common). |
+| **Sort Key:**  `created_at` | Sort Key |  |
 
 ### Typical usage:
 
@@ -72,7 +72,7 @@ This table stores batch chunks created after debounce logic expires, representin
 | Attribute | Role | Reason |
 | :-- | :-- | :-- |
 | **Partition Key:** `category_id` | Partition Key | Unique identifier for each category. |
-| **Sort Key:** *(optional)* `subcategory_id` or `name` | Sort Key | Optional, if you have hierarchical categories or want to sort categories by name or subcategory. |
+| **Sort Key:**  `order_date` | Sort Key |  |
 
 
 **Additional Notes:**
